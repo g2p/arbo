@@ -73,7 +73,12 @@ def display_tree(itr, out):
     out.write('\n')
 
 def path_iter_from_file(infile, sep='/', zero_terminated=False):
+  """
+  Break a file into an iterator of sequences of path components.
+  """
+
   if zero_terminated:
+    # http://stromberg.dnsalias.org/~strombrg/readline0.html
     raise NotImplementedError
   else:
     def itr():
