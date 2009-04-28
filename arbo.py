@@ -71,7 +71,10 @@ def traverse_tree_skip_root(root):
     for e in traverse_tree(node, []):
       yield e
 
-def display_tree(itr, out):
+STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
+STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
+
+def display_tree(itr, out, style=STYLE_UNICODE):
   """
   Display an ASCII tree from a traverse_tree-style iterator.
   """
@@ -80,13 +83,13 @@ def display_tree(itr, out):
     if last_vector: #tests for emptiness
       for is_last in last_vector[:-1]:
         if is_last:
-          out.write('    ')
+          out.write(style[0])
         else:
-          out.write('|   ')
+          out.write(style[1])
       if last_vector[-1]:
-        out.write('`-- ')
+        out.write(style[2])
       else:
-        out.write('|-- ')
+        out.write(style[3])
     # May need quoting / escaping
     out.write(value)
     out.write('\n')
@@ -157,4 +160,19 @@ def main():
 
 if __name__ == '__main__':
   main()
+
+"""
+Ideas:
+  compact tree (a la pstree)
+  mix two lists, one being a filter for the other.
+  eg, git ls-files and the filesystem
+  preconfigure:
+    git ls-files
+    hg locate
+    bzr ls
+    ack -f
+    xargs -0a <(find -print0) ls -d --color=force
+    # more at http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
+
+"""
 
