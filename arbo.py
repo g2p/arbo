@@ -2,7 +2,26 @@
 # vim: set fileencoding=utf-8 sw=2 ts=2 et :
 from __future__ import absolute_import
 
-import itertools
+try:
+  from itertools import izip_longest
+except ImportError:
+  # Not a perfect reimpl, but sufficient
+  def izip_longest(*iterators):
+    fillvalue = None
+    iterators = tuple(iter(el) for el in iterators)
+    okset = set(range(len(iterators)))
+    def next(pos, it):
+      try:
+        return it.next()
+      except StopIteration:
+        okset.discard(pos)
+        return fillvalue
+    while True:
+      r = tuple(next(pos, it) for (pos, it) in enumerate(iterators))
+      if not okset: #empty
+        raise StopIteration
+      yield r
+
 
 class Node(object):
   def __init__(self, value, children=None):
@@ -98,7 +117,7 @@ def tree_from_path_iter(itr):
   for str_path in itr:
     parent = root
     node_path = []
-    for node0, str_comp in itertools.izip_longest(node_path0, str_path):
+    for node0, str_comp in izip_longest(node_path0, str_path):
       if str_comp is None:
         break
       if node0 is not None and node0.value == str_comp:
