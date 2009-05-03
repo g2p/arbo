@@ -147,7 +147,8 @@ def main():
   """
   Read from stdin, display to stdout.
 
-  These two should be identical (apart for unicode and color):
+  These two should be identical apart for unicode/terminal escaping,
+  the switch to non-ascii tree style, and color
   find |LANG= sort |./arbo.py
   tree -a --noreport
 
@@ -155,8 +156,45 @@ def main():
   diff -u <(tree -a --noreport) <(find |LANG= sort |./arbo.py)
   """
 
+  from optparse import OptionParser
+  import subprocess
   import sys
-  display_tree(traverse_tree_from_path_iter(path_iter_from_file(sys.stdin)), sys.stdout)
+
+  parser = OptionParser()
+  parser.set_defaults(source='stdin')
+  # Maybe argparse-style subcommands would fit better.
+  parser.add_option('--stdin',
+      action='store_const', dest='source', const='stdin',
+      help='Display paths listed from stdin')
+  parser.add_option('--bzr',
+      action='store_const', dest='source', const='bzr',
+      help='Display bzr-managed files')
+  parser.add_option('--git',
+      action='store_const', dest='source', const='git',
+      help='Display git-managed files')
+  parser.add_option('--hg',
+      action='store_const', dest='source', const='hg',
+      help='Display hg-managed files')
+
+  (options, args) = parser.parse_args()
+  src = options.source
+
+  if src == 'stdin':
+    fin = sys.stdin
+  elif src == 'bzr':
+    fin = subprocess.Popen(['bzr', 'ls', ], stdout=subprocess.PIPE).stdout
+  elif src == 'git':
+    fin = subprocess.Popen(['git', 'ls-files', ], stdout=subprocess.PIPE).stdout
+  elif src == 'hg':
+    # Unlike git and bzr, this is rooted in the repository not the cwd.
+    fin = subprocess.Popen(['hg', 'locate', '--include', '.', ],
+        stdout=subprocess.PIPE).stdout
+  else:
+    raise NotImplementedError
+
+  display_tree(
+      traverse_tree_from_path_iter(path_iter_from_file(fin)),
+      sys.stdout)
 
 if __name__ == '__main__':
   main()
