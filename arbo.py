@@ -120,10 +120,13 @@ def tree_from_path_iter(itr):
   for str_path in itr:
     parent = root
     node_path = []
+    diverged = False
     for node0, str_comp in izip_longest(node_path0, str_path):
       if str_comp is None:
         break
-      if node0 is not None and node0.value == str_comp:
+      diverged = diverged or \
+          node0 is None or node0.value != str_comp
+      if not diverged:
         node = node0
       else:
         node = Node(str_comp)
