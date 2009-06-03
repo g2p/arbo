@@ -2,6 +2,8 @@
 # vim: set fileencoding=utf-8 sw=2 ts=2 et :
 from __future__ import absolute_import
 
+import subprocess
+
 try:
   from itertools import izip_longest
 except ImportError:
@@ -120,10 +122,13 @@ def tree_from_path_iter(itr):
   for str_path in itr:
     parent = root
     node_path = []
+    diverged = False
     for node0, str_comp in izip_longest(node_path0, str_path):
       if str_comp is None:
         break
-      if node0 is not None and node0.value == str_comp:
+      diverged = diverged or \
+          node0 is None or node0.value != str_comp
+      if not diverged:
         node = node0
       else:
         node = Node(str_comp)
@@ -143,6 +148,22 @@ def traverse_tree_from_path_iter(itr):
 
   return traverse_tree_skip_root(tree_from_path_iter(itr))
 
+def postprocess_zero_flist_file(fl):
+  """
+  Post-process a file listing zero-terminated, local file names.
+
+  Adds color and escaping atm.
+  """
+
+  # Buggy, disabled: would colorize the complete path
+  # and compromise tree-building.
+  return subprocess.Popen(['/usr/bin/xargs', '-0',
+    '-n1', ],
+    stdin=fl, stdout=subprocess.PIPE).stdout
+  return subprocess.Popen(['/usr/bin/xargs', '-0',
+    'ls', '-1d', '--color=always', '--quoting-style=c-maybe', ],
+    stdin=fl, stdout=subprocess.PIPE).stdout
+
 def main():
   """
   Read from stdin, display to stdout.
@@ -157,7 +178,6 @@ def main():
   """
 
   from optparse import OptionParser
-  import subprocess
   import sys
 
   parser = OptionParser()
@@ -182,13 +202,18 @@ def main():
   if src == 'stdin':
     fin = sys.stdin
   elif src == 'bzr':
-    fin = subprocess.Popen(['bzr', 'ls', ], stdout=subprocess.PIPE).stdout
+    fin = postprocess_zero_flist_file(subprocess.Popen(
+      ['bzr', 'ls', '--versioned', '--null', ],
+      stdout=subprocess.PIPE).stdout)
   elif src == 'git':
-    fin = subprocess.Popen(['git', 'ls-files', ], stdout=subprocess.PIPE).stdout
+    fin = postprocess_zero_flist_file(subprocess.Popen(
+      ['git', 'ls-files', '-z', ],
+      stdout=subprocess.PIPE).stdout)
   elif src == 'hg':
     # Unlike git and bzr, this is rooted in the repository not the cwd.
-    fin = subprocess.Popen(['hg', 'locate', '--include', '.', ],
-        stdout=subprocess.PIPE).stdout
+    fin = postprocess_zero_flist_file(subprocess.Popen(
+      ['hg', 'locate', '--include', '.', '-0', ],
+      stdout=subprocess.PIPE).stdout)
   else:
     raise NotImplementedError
 
@@ -206,6 +231,7 @@ Ideas:
   eg, git ls-files and the filesystem
   preconfigure:
     git ls-files
+    git ls-files -o --exclude-standard
     hg locate
     bzr ls
     ack -f
