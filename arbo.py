@@ -209,6 +209,7 @@ Ideas:
   eg, git ls-files and the filesystem
   preconfigure:
     git ls-files
+    git ls-files -o --exclude-standard
     hg locate
     bzr ls
     ack -f
