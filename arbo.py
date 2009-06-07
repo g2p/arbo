@@ -110,7 +110,8 @@ def path_iter_from_file(infile, sep='/', zero_terminated=False):
         yield line.rstrip()
     itr = itr()
   for path_str in itr:
-    yield path_str.split(sep)
+    # filters empty path components
+    yield [el for el in path_str.split(sep) if el]
 
 def tree_from_path_iter(itr):
   """
