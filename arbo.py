@@ -192,6 +192,9 @@ def main():
   parser.add_option('--git',
       action='store_const', dest='source', const='git',
       help='Display git-managed files')
+  parser.add_option('--svn',
+      action='store_const', dest='source', const='svn',
+      help='Display svn-managed files')
   parser.add_option('--hg',
       action='store_const', dest='source', const='hg',
       help='Display hg-managed files')
@@ -210,8 +213,12 @@ def main():
     fin = postprocess_zero_flist_file(subprocess.Popen(
       ['git', 'ls-files', '-z', ],
       stdout=subprocess.PIPE).stdout)
+  elif src == 'svn':
+    fin = postprocess_zero_flist_file(subprocess.Popen(
+      ['svn', 'list', '-R', ],
+      stdout=subprocess.PIPE).stdout)
   elif src == 'hg':
-    # Unlike git and bzr, this is rooted in the repository not the cwd.
+    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
     fin = postprocess_zero_flist_file(subprocess.Popen(
       ['hg', 'locate', '--include', '.', '-0', ],
       stdout=subprocess.PIPE).stdout)
