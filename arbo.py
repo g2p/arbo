@@ -182,6 +182,7 @@ def main():
   if src == 'stdin':
     fin = sys.stdin
   elif src == 'bzr':
+    # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
     fin = subprocess.Popen(['bzr', 'ls', ], stdout=subprocess.PIPE).stdout
   elif src == 'git':
     fin = subprocess.Popen(['git', 'ls-files', ], stdout=subprocess.PIPE).stdout
