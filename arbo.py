@@ -139,6 +139,24 @@ def tree_from_path_iter(itr):
     node_path0 = node_path
   return root
 
+def filecolors(itr):
+  """
+  Take a path, colorize the last path element.
+
+  Assumes they are to existing files, rooted in the current directory.
+  ls's colorisation logic is complicated, it has to handle stuff like
+  LS_COLORS and that means parsing a lot of stat info.
+
+  Delegating to ls is also hard, unless we change directories as often
+  as necessary so that we don't have to edit output. Editing output would
+  be hard because colours could be complicated to parse.
+  ls output must be gotten line by line so that our tree decorations
+  don't get colored.
+  delegating to ls also buys us flexible escaping and quoting.
+  """
+
+  pass
+
 def traverse_tree_from_path_iter(itr):
   """
   Convert a path_iter-style iterator to a traverse_tree iterator.
@@ -156,14 +174,16 @@ def postprocess_zero_flist_file(fl):
   Adds color and escaping atm.
   """
 
-  # Buggy, disabled: would colorize the complete path
-  # and compromise tree-building.
-  return subprocess.Popen(['/usr/bin/xargs', '-0',
-    '-n1', ],
-    stdin=fl, stdout=subprocess.PIPE).stdout
-  return subprocess.Popen(['/usr/bin/xargs', '-0',
-    'ls', '-1d', '--color=always', '--quoting-style=c-maybe', ],
-    stdin=fl, stdout=subprocess.PIPE).stdout
+  if True:
+    return subprocess.Popen(['/usr/bin/xargs', '-0',
+      '-n1', ],
+      stdin=fl, stdout=subprocess.PIPE).stdout
+  else:
+    # Buggy: would colorize the complete path
+    # and compromise tree building.
+    return subprocess.Popen(['/usr/bin/xargs', '-0', #'-n1',
+      'ls', '-1d', '--color=always', '--quoting-style=c-maybe', ],
+      stdin=fl, stdout=subprocess.PIPE).stdout
 
 def main():
   """
