@@ -41,10 +41,12 @@ def traverse_tree(node, last_vector):
   """
   Traverse a tree in an order appropriate for graphic display.
 
-  Traverse a tree in breadth-first order, returning a (value, last_vector)
+  Traverse a tree in depth-first order, returning a (value, last_vector)
   iterator where value is the node value and last_vector a vector
   of booleans that represent which nodes in the parent chain are
   the last of their siblings.
+
+  last_vector is important for display, it tells where vertical lines end.
   """
 
   yield (node.value, last_vector)
@@ -103,12 +105,10 @@ def path_iter_from_file(infile, sep='/', zero_terminated=False):
 
   if zero_terminated:
     # http://stromberg.dnsalias.org/~strombrg/readline0.html
+    itr = NotImplemented
     raise NotImplementedError
   else:
-    def itr():
-      for line in infile:
-        yield line.rstrip()
-    itr = itr()
+    itr = (line.rstrip() for line in infile)
   for path_str in itr:
     # filters empty path components
     yield [el for el in path_str.split(sep) if el]
@@ -155,7 +155,8 @@ def filecolors(itr):
   delegating to ls also buys us flexible escaping and quoting.
   """
 
-  pass
+  for path in itr:
+    yield path
 
 def traverse_tree_from_path_iter(itr):
   """
