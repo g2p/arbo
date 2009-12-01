@@ -29,3 +29,36 @@ Busybox looks at LS_COLORS but hardcodes a few color mappings.
 yafc, lftp, tree, zsh seem to have what I need.
 yafc is the cleanest.
 
+Comparing ls and zsh
+zsh has tc:sp:ma:hi:du
+hi ma du are for menu selection.
+tc sp are for completion.
+
+ls  has ca:cl:do:mh:rs
+man dir_colors
+http://manpages.debian.net/cgi-bin/man.cgi?query=dir_colors&manpath=Debian+Sid
+cap, clr-to-eol, door, multihardlink, reset
+
+In common are
+bd cd di ec ex fi lc ln mi no or ow pi rc sg so st su tw
+
+
+comm -3 <(echo '
+    "no", "fi", "di", "ln", "pi", "so", "bd", "cd", "or", "mi",
+    "su", "sg", "tw", "ow", "st", "ex",
+    "lc", "rc", "ec", "tc", "sp", "ma", "hi", "du", NULL
+' |xargs -n 1 |sort -u) <(echo '    "lc", "rc", "ec", "rs", "no", "fi", "di", "ln", "pi", "so",
+    "bd", "cd", "mi", "or", "ex", "do", "su", "sg", "st",
+    "ow", "tw", "ca", "mh", "cl", NULL
+' | xargs -n 1 |sort -u)
+        ca,
+        cl,
+        do,
+du,
+hi,
+ma,
+        mh,
+        rs,
+sp,
+tc,
+
