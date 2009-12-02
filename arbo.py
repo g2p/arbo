@@ -246,6 +246,9 @@ def main():
   parser.add_option('--hg',
       action='store_const', dest='source', const='hg',
       help='Display hg-managed files')
+  parser.add_option('--find',
+      action='store_const', dest='source', const='find',
+      help='Display files below the current directory')
   parser.add_option('-0',
       action='store_true', dest='zero_terminated')
 
@@ -275,6 +278,11 @@ def main():
     # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
     fin = subprocess.Popen(
       ['hg', 'locate', '--include', '.', '-0', ],
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
+  elif src == 'find':
+    fin = subprocess.Popen(
+      ['find', '-print0', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
   else:
