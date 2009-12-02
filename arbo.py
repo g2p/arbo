@@ -2,7 +2,7 @@
 # vim: set fileencoding=utf-8 sw=2 ts=2 et :
 from __future__ import absolute_import
 
-import pprint
+import os
 import subprocess
 from arbo_readline0 import readline0
 
@@ -275,11 +275,16 @@ def main():
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
   elif src == 'hg':
-    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
     fin = subprocess.Popen(
       ['hg', 'locate', '--include', '.', '-0', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
+    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
+    hg_root = subprocess.Popen(
+        ['hg', 'root', ],
+        stdout=subprocess.PIPE,
+        ).communicate()[0].rstrip()
+    os.chdir(hg_root)
   elif src == 'find':
     fin = subprocess.Popen(
       ['find', '-print0', ],
