@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import pprint
 import subprocess
-from readline0 import readline0
+from arbo_readline0 import readline0
 
 try:
   from itertools import izip_longest

@@ -13,6 +13,7 @@ setup(name='arbo',
         +'all version-controlled files.\n',
       py_modules=[
            'arbo',
+           'arbo_readline0',
            ],
      )
 
