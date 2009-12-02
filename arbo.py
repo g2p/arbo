@@ -2,7 +2,9 @@
 # vim: set fileencoding=utf-8 sw=2 ts=2 et :
 from __future__ import absolute_import
 
+import pprint
 import subprocess
+from readline0 import readline0
 
 try:
   from itertools import izip_longest
@@ -33,16 +35,17 @@ class Node(object):
   Value is a path element.
   """
 
-  def __init__(self, value, children=None):
+  def __init__(self, value, pvalue, children=None):
     if children is None:
       children = []
     self.value = value
+    self.pvalue = pvalue
     self.children = children
 
   def __repr__(self):
     if self.children == []:
-      return 'Node(%r)' % self.value
-    return 'Node(%r, %r)' % (self.value, self.children)
+      return 'Node(%r, %r)' % (self.value, self.pvalue)
+    return 'Node(%r, %r, %r)' % (self.value, self.pvalue, self.children)
 
 def traverse_tree(node, last_vector):
   """
@@ -56,7 +59,7 @@ def traverse_tree(node, last_vector):
   last_vector is important for display, it tells where vertical lines end.
   """
 
-  yield (node.value, last_vector)
+  yield (node.pvalue, last_vector)
   prev_sibling = None
   last_vector.append(False)
   for sibling in node.children:
@@ -112,8 +115,7 @@ def path_iter_from_file(infile, sep='/', zero_terminated=False):
 
   if zero_terminated:
     # http://stromberg.dnsalias.org/~strombrg/readline0.html
-    itr = NotImplemented
-    raise NotImplementedError
+    itr = readline0(infile)
   else:
     itr = (line.rstrip() for line in infile)
   for path_str in itr:
@@ -125,10 +127,10 @@ def tree_from_path_iter(itr, postprocess=None):
   Convert a path_iter-style iterator to a tree.
 
   itr is a path_iter-style iterator.
-  itr2 contains display data.
+  postprocess takes a path, and prettifies it.
   """
 
-  root = Node('ROOT')
+  root = Node('ROOT', 'ROOT')
   node_path0 = []
   for str_path in itr:
     parent = root
@@ -137,23 +139,22 @@ def tree_from_path_iter(itr, postprocess=None):
     for node0, str_comp in izip_longest(node_path0, str_path):
       if str_comp is None:
         break
-      diverged = diverged or \
-          node0 is None or node0.value != str_comp
+      diverged |= node0 is None or node0.value != str_comp
       if not diverged:
         node = node0
       else:
         if postprocess:
-          data = postprocess(str_path)
+          pvalue = postprocess(str_path[:len(node_path)], str_comp)
         else:
-          data = str_comp
-        node = Node(data)
+          pvalue = str_comp
+        node = Node(str_comp, pvalue)
         parent.children.append(node)
       node_path.append(node)
       parent = node
     node_path0 = node_path
   return root
 
-def postprocess_color_quote(path):
+def postprocess_color_quote(parent_path, name):
   """
   Take a path, colorize the last path element (or the full path, for now).
 
@@ -169,18 +170,25 @@ def postprocess_color_quote(path):
   delegating to ls also buys us flexible escaping and quoting.
   """
 
-  path = '/'.join(path)
+  if parent_path:
+    parent_path_str = '/'.join(parent_path)
+  else:
+    parent_path_str=None
+  # Acceptable quoting styles: those that don't keep newlines.
+  # c-maybe (preferred), c, escape.
   # c-maybe is lacking in jaunty due to old gnulib
   # somewhere in buildd or source pkg.
   proc = subprocess.Popen([
-      'ls', '-1d', '--color=always', '--quoting-style=shell', '--',
-      path
+      'ls', '-1d', '--color=always', '--quoting-style=escape', '--',
+      name,
       ],
-      stdout=subprocess.PIPE)
+    stdout=subprocess.PIPE,
+    cwd=parent_path_str,
+    )
   outd, errd = proc.communicate()
   if proc.returncode != 0:
-    raise RuntimeError('Failed to postprocess path', path)
-  return outd[:-4] # Strip newline and colour reset.
+    raise RuntimeError('Failed to postprocess path', parent_path_str, name)
+  return outd[:-4] # XXX Strip newline and colour reset.
 
 def traverse_tree_from_path_iter_XXX(itr):
   """
@@ -191,22 +199,6 @@ def traverse_tree_from_path_iter_XXX(itr):
   """
 
   return traverse_tree_skip_root(tree_from_path_iter(itr))
-
-def postprocess_zero_flist_file(fl):
-  """
-  Post-process a file listing zero-terminated, local file names.
-  """
-
-  if True:
-    return subprocess.Popen(['/usr/bin/xargs', '-0',
-      '-n1', ],
-      stdin=fl, stdout=subprocess.PIPE).stdout
-  else: # Add color and escaping
-    # Buggy: would colorize the complete path
-    # and compromise tree building.
-    return subprocess.Popen(['/usr/bin/xargs', '-0', #'-n1',
-      'ls', '-1d', '--color=always', '--quoting-style=c-maybe', ],
-      stdin=fl, stdout=subprocess.PIPE).stdout
 
 def main():
   """
@@ -248,29 +240,35 @@ def main():
 
   if src == 'stdin':
     fin = sys.stdin
+    zero_terminated = False
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
-    fin = postprocess_zero_flist_file(subprocess.Popen(
+    fin = subprocess.Popen(
       ['bzr', 'ls', '--versioned', '--null', ],
-      stdout=subprocess.PIPE).stdout)
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
   elif src == 'git':
-    fin = postprocess_zero_flist_file(subprocess.Popen(
+    fin = subprocess.Popen(
       ['git', 'ls-files', '-z', ],
-      stdout=subprocess.PIPE).stdout)
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
   elif src == 'svn':
-    fin = postprocess_zero_flist_file(subprocess.Popen(
+    fin = subprocess.Popen(
       ['svn', 'list', '-R', ],
-      stdout=subprocess.PIPE).stdout)
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
   elif src == 'hg':
     # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
-    fin = postprocess_zero_flist_file(subprocess.Popen(
+    fin = subprocess.Popen(
       ['hg', 'locate', '--include', '.', '-0', ],
-      stdout=subprocess.PIPE).stdout)
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
   else:
     raise NotImplementedError
 
   display_tree(
-      tree_from_path_iter(path_iter_from_file(fin),
+      tree_from_path_iter(
+        path_iter_from_file(fin, zero_terminated=zero_terminated),
         postprocess=postprocess_color_quote),
       sys.stdout)
 
