@@ -196,7 +196,8 @@ def postprocess_color_quote(parent_path, name):
   outd, errd = proc.communicate()
   if proc.returncode != 0:
     raise RuntimeError('Failed to postprocess path', parent_path_str, name)
-  return outd[:-4] # XXX Strip newline and colour reset.
+  newline_pos = outd.find('\n')
+  return outd[:newline_pos] # Strip newline and colour reset.
 
 def traverse_tree_from_path_iter_XXX(itr):
   """
