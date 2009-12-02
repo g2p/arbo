@@ -51,15 +51,16 @@ def traverse_tree(node, last_vector):
   """
   Traverse a tree in an order appropriate for graphic display.
 
-  Traverse a tree in depth-first order, returning a (value, last_vector)
+  Traverse a tree in depth-first order, returning a
+  (value, last_vector, has_single_child)
   iterator where value is the node value and last_vector a vector
   of booleans that represent which nodes in the parent chain are
-  the last of their siblings.
+  the last of their siblings. has_single_child is self-explanatory.
 
   last_vector is important for display, it tells where vertical lines end.
   """
 
-  yield (node.pvalue, last_vector)
+  yield (node.pvalue, last_vector, len(node.children) == 1)
   prev_sibling = None
   last_vector.append(False)
   for sibling in node.children:
@@ -93,8 +94,10 @@ def display_tree(tree_root, out, style=STYLE_UNICODE):
   Display an ASCII tree from a tree object.
   """
 
-  for (value, last_vector) in traverse_tree_skip_root(tree_root):
-    if last_vector: #tests for emptiness
+  is_single_child = False
+  for (value, last_vector, has_single_child) in \
+      traverse_tree_skip_root(tree_root):
+    if last_vector and not is_single_child: #tests for emptiness
       for is_last in last_vector[:-1]:
         if is_last:
           out.write(style[0])
@@ -106,7 +109,12 @@ def display_tree(tree_root, out, style=STYLE_UNICODE):
         out.write(style[3])
     # May need quoting / escaping
     out.write(value)
-    out.write('\n')
+    if has_single_child:
+      out.write('/')
+      is_single_child = True
+    else:
+      out.write('\n')
+      is_single_child = False
 
 def path_iter_from_file(infile, sep='/', zero_terminated=False):
   """
