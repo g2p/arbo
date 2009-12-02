@@ -217,7 +217,10 @@ def main():
   import sys
 
   parser = OptionParser()
-  parser.set_defaults(source='stdin')
+  parser.set_defaults(
+      source='stdin',
+      zero_terminated=False,
+      )
   # Maybe argparse-style subcommands would fit better.
   parser.add_option('--stdin',
       action='store_const', dest='source', const='stdin',
@@ -234,13 +237,15 @@ def main():
   parser.add_option('--hg',
       action='store_const', dest='source', const='hg',
       help='Display hg-managed files')
+  parser.add_option('-0',
+      action='store_true', dest='zero_terminated')
 
   (options, args) = parser.parse_args()
   src = options.source
 
   if src == 'stdin':
     fin = sys.stdin
-    zero_terminated = False
+    zero_terminated = options.zero_terminated
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
     fin = subprocess.Popen(
