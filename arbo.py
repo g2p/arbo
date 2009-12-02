@@ -26,6 +26,13 @@ except ImportError:
 
 
 class Node(object):
+  """
+  A tree node.
+
+  Children is an iterable.
+  Value is a path element.
+  """
+
   def __init__(self, value, children=None):
     if children is None:
       children = []
@@ -78,12 +85,12 @@ def traverse_tree_skip_root(root):
 STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
 STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
 
-def display_tree(itr, out, style=STYLE_UNICODE):
+def display_tree(tree_root, out, style=STYLE_UNICODE):
   """
-  Display an ASCII tree from a traverse_tree-style iterator.
+  Display an ASCII tree from a tree object.
   """
 
-  for (value, last_vector) in itr:
+  for (value, last_vector) in traverse_tree_skip_root(tree_root):
     if last_vector: #tests for emptiness
       for is_last in last_vector[:-1]:
         if is_last:
@@ -113,9 +120,12 @@ def path_iter_from_file(infile, sep='/', zero_terminated=False):
     # filters empty path components
     yield [el for el in path_str.split(sep) if el]
 
-def tree_from_path_iter(itr):
+def tree_from_path_iter(itr, postprocess=None):
   """
   Convert a path_iter-style iterator to a tree.
+
+  itr is a path_iter-style iterator.
+  itr2 contains display data.
   """
 
   root = Node('ROOT')
@@ -132,18 +142,22 @@ def tree_from_path_iter(itr):
       if not diverged:
         node = node0
       else:
-        node = Node(str_comp)
+        if postprocess:
+          data = postprocess(str_path)
+        else:
+          data = str_comp
+        node = Node(data)
         parent.children.append(node)
       node_path.append(node)
       parent = node
     node_path0 = node_path
   return root
 
-def filecolors(itr):
+def postprocess_color_quote(path):
   """
-  Take a path, colorize the last path element.
+  Take a path, colorize the last path element (or the full path, for now).
 
-  Assumes they are to existing files, rooted in the current directory.
+  Assumes the path is to an existing file, rooted in the current directory.
   ls's colorisation logic is complicated, it has to handle stuff like
   LS_COLORS and that means parsing a lot of stat info.
 
@@ -155,10 +169,20 @@ def filecolors(itr):
   delegating to ls also buys us flexible escaping and quoting.
   """
 
-  for path in itr:
-    yield path
+  path = '/'.join(path)
+  # c-maybe is lacking in jaunty due to old gnulib
+  # somewhere in buildd or source pkg.
+  proc = subprocess.Popen([
+      'ls', '-1d', '--color=always', '--quoting-style=shell', '--',
+      path
+      ],
+      stdout=subprocess.PIPE)
+  outd, errd = proc.communicate()
+  if proc.returncode != 0:
+    raise RuntimeError('Failed to postprocess path', path)
+  return outd[:-4] # Strip newline and colour reset.
 
-def traverse_tree_from_path_iter(itr):
+def traverse_tree_from_path_iter_XXX(itr):
   """
   Convert a path_iter-style iterator to a traverse_tree iterator.
 
@@ -171,15 +195,13 @@ def traverse_tree_from_path_iter(itr):
 def postprocess_zero_flist_file(fl):
   """
   Post-process a file listing zero-terminated, local file names.
-
-  Adds color and escaping atm.
   """
 
   if True:
     return subprocess.Popen(['/usr/bin/xargs', '-0',
       '-n1', ],
       stdin=fl, stdout=subprocess.PIPE).stdout
-  else:
+  else: # Add color and escaping
     # Buggy: would colorize the complete path
     # and compromise tree building.
     return subprocess.Popen(['/usr/bin/xargs', '-0', #'-n1',
@@ -248,7 +270,8 @@ def main():
     raise NotImplementedError
 
   display_tree(
-      traverse_tree_from_path_iter(path_iter_from_file(fin)),
+      tree_from_path_iter(path_iter_from_file(fin),
+        postprocess=postprocess_color_quote),
       sys.stdout)
 
 if __name__ == '__main__':
