@@ -258,27 +258,49 @@ def main():
   if src == 'stdin':
     fin = sys.stdin
     zero_terminated = options.zero_terminated
+    colorize = False
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
     fin = subprocess.Popen(
       ['bzr', 'ls', '--versioned', '--null', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
+    colorize = True
   elif src == 'git':
     fin = subprocess.Popen(
       ['git', 'ls-files', '-z', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
+    colorize = True
+    is_inside_work_tree = subprocess.Popen(
+        ['git', 'rev-parse', '--is-inside-work-tree', ],
+        stdout=subprocess.PIPE,
+        ).communicate()[0].rstrip() == 'true'
+    if not is_inside_work_tree:
+      is_bare_repository = subprocess.Popen(
+          ['git', 'rev-parse', '--is-bare-repository', ],
+          stdout=subprocess.PIPE,
+          ).communicate()[0].rstrip() == 'true'
+      if is_bare_repository:
+        colorize = False
+      else:
+        git_root = subprocess.Popen(
+            ['git', 'rev-parse', '--show-cdup', ],
+            stdout=subprocess.PIPE,
+            ).communicate()[0].rstrip()
+        os.chdir(git_root)
   elif src == 'svn':
     fin = subprocess.Popen(
       ['svn', 'list', '-R', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
+    colorize = True
   elif src == 'hg':
     fin = subprocess.Popen(
       ['hg', 'locate', '--include', '.', '-0', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
+    colorize = True
     # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
     hg_root = subprocess.Popen(
         ['hg', 'root', ],
@@ -290,13 +312,18 @@ def main():
       ['find', '-print0', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
+    colorize = True
   else:
     raise NotImplementedError
 
+  if colorize:
+    postprocess = postprocess_color_quote
+  else:
+    postprocess = None
   display_tree(
       tree_from_path_iter(
         path_iter_from_file(fin, zero_terminated=zero_terminated),
-        postprocess=postprocess_color_quote),
+        postprocess=postprocess),
       sys.stdout)
 
 if __name__ == '__main__':
