@@ -42,6 +42,12 @@ cap, clr-to-eol, door, multihardlink, reset
 In common are
 bd cd di ec ex fi lc ln mi no or ow pi rc sg so st su tw
 
+paludis-utils has a subset of the ls codes which excludes:
+ca:cl:ec:lc:mh:rc:rs
+cap, clr-to-eol, left, end, multihardlink, right, reset
+
+But it really only handles:
+di:ex:mi:ln:sg:su
 
 comm -3 <(echo '
     "no", "fi", "di", "ln", "pi", "so", "bd", "cd", "or", "mi",
