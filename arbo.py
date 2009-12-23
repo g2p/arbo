@@ -290,6 +290,9 @@ def main():
   parser.add_option('--hg',
       action='store_const', dest='source', const='hg',
       help='Display hg-managed files')
+  parser.add_option('--darcs',
+      action='store_const', dest='source', const='darcs',
+      help='Display darcs-managed files')
   parser.add_option('--fossil',
       action='store_const', dest='source', const='fossil',
       help='Display fossil-managed files')
@@ -357,6 +360,18 @@ def main():
         stdout=subprocess.PIPE,
         ).communicate()[0].rstrip()
     os.chdir(hg_root)
+  elif src == 'darcs':
+    fin = subprocess.Popen(
+      ['darcs', 'show', 'files', '-0', ],
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
+    colorize = True
+    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
+    darcs_root = subprocess.Popen(
+        ['sh', '-c', 'darcs show repo |sed -n "s#^[[:space:]]*Root: ##p"', ],
+        stdout=subprocess.PIPE,
+        ).communicate()[0].rstrip()
+    os.chdir(darcs_root)
   elif src == 'fossil':
     fin = subprocess.Popen(
       ['fossil', 'ls', ],
