@@ -6,6 +6,11 @@ import os
 import subprocess
 from arbo_readline0 import readline0
 
+SLASH = object()
+SLASHSLASH = object()
+CWD = object()
+SPECIALS = (SLASH, SLASHSLASH, CWD)
+
 try:
   from itertools import izip_longest
 except ImportError:
@@ -82,6 +87,8 @@ def traverse_tree_skip_root(root):
   and you skip the root.
   """
 
+  if len(root.children) == 1 and root.children[0].value == CWD:
+    root = root.children[0]
   for node in root.children:
     for e in traverse_tree(node, []):
       yield e
@@ -107,14 +114,25 @@ def display_tree(tree_root, out, style=STYLE_UNICODE):
         out.write(style[2])
       else:
         out.write(style[3])
-    # May need quoting / escaping
-    out.write(value)
-    if has_single_child:
+    if value == SLASH:
       out.write('/')
-      is_single_child = True
+      if not has_single_child:
+        out.write('\n')
+    elif value == SLASHSLASH:
+      out.write('//')
+      if not has_single_child:
+        out.write('\n')
+    elif value == CWD:
+      if not has_single_child:
+        out.write('.\n')
     else:
-      out.write('\n')
-      is_single_child = False
+      # May need quoting / escaping
+      out.write(value)
+      if has_single_child:
+        out.write('/')
+      else:
+        out.write('\n')
+    is_single_child = has_single_child
 
 def path_iter_from_file(infile, sep='/', zero_terminated=False):
   """
@@ -127,8 +145,14 @@ def path_iter_from_file(infile, sep='/', zero_terminated=False):
   else:
     itr = (line.rstrip() for line in infile)
   for path_str in itr:
-    # filters empty path components
-    yield [el for el in path_str.split(sep) if el]
+    if path_str[:2] == '//' and path_str[:3] != '///':
+      # // special semantics (cf POSIX)
+      yield [SLASHSLASH] + [el for el in path_str.split(sep) if el]
+    elif path_str[:1] == '/':
+      yield [SLASH] + [el for el in path_str.split(sep) if el]
+    else:
+      # filters empty path components
+      yield [CWD] + [el for el in path_str.split(sep) if el]
 
 def tree_from_path_iter(itr, postprocess=None):
   """
@@ -178,10 +202,24 @@ def postprocess_color_quote(parent_path, name):
   delegating to ls also buys us flexible escaping and quoting.
   """
 
+  if name in SPECIALS:
+    return name
+  if parent_path[0] == CWD:
+    parent_path = parent_path[1:]
+  elif parent_path[0] == SLASH and len(parent_path) > 1:
+    parent_path[0] = ''
+  elif parent_path[0] == SLASH and len(parent_path) <= 1:
+    parent_path[0] = '/'
+  elif parent_path[0] == SLASHSLASH and len(parent_path) > 1:
+    parent_path[0] = '/'
+  elif parent_path[0] == SLASHSLASH and len(parent_path) <= 1:
+    parent_path[0] = '//'
+  else:
+    assert False
   if parent_path:
     parent_path_str = '/'.join(parent_path)
   else:
-    parent_path_str=None
+    parent_path_str = None
   # Acceptable quoting styles: those that don't keep newlines.
   # c-maybe (preferred), c, escape.
   # c-maybe is lacking in jaunty due to old gnulib
@@ -252,8 +290,11 @@ def main():
   parser.add_option('--find',
       action='store_const', dest='source', const='find',
       help='Display files below the current directory')
+
   parser.add_option('-0',
       action='store_true', dest='zero_terminated')
+  parser.add_option('--color',
+      action='store_true', dest='colorize')
 
   (options, args) = parser.parse_args()
   src = options.source
@@ -261,7 +302,7 @@ def main():
   if src == 'stdin':
     fin = sys.stdin
     zero_terminated = options.zero_terminated
-    colorize = False
+    colorize = options.colorize
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
     fin = subprocess.Popen(
