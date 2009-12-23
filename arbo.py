@@ -273,11 +273,12 @@ def main():
   parser.set_defaults(
       source='stdin',
       zero_terminated=False,
+      colorize=False,
       )
   # Maybe argparse-style subcommands would fit better.
   parser.add_option('--stdin',
       action='store_const', dest='source', const='stdin',
-      help='Display paths listed from stdin')
+      help='Display paths listed from stdin (the default)')
   parser.add_option('--bzr',
       action='store_const', dest='source', const='bzr',
       help='Display bzr-managed files')
@@ -301,9 +302,11 @@ def main():
       help='Display files below the current directory')
 
   parser.add_option('-0',
-      action='store_true', dest='zero_terminated')
+      action='store_true', dest='zero_terminated',
+      help='Input is zero-terminated')
   parser.add_option('--color',
-      action='store_true', dest='colorize')
+      action='store_true', dest='colorize',
+      help='Input is local file names, which should be colorized')
 
   (options, args) = parser.parse_args()
   src = options.source
