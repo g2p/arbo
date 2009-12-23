@@ -87,11 +87,13 @@ def traverse_tree_skip_root(root):
   and you skip the root.
   """
 
-  if len(root.children) == 1 and root.children[0].value == CWD:
-    root = root.children[0]
   for node in root.children:
-    for e in traverse_tree(node, []):
-      yield e
+    if node.value == CWD:
+      for e in traverse_tree_skip_root(node):
+        yield e
+    else:
+      for e in traverse_tree(node, []):
+        yield e
 
 STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
 STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
