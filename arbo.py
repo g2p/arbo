@@ -154,7 +154,11 @@ def path_iter_from_file(infile, sep='/', zero_terminated=False):
       yield [SLASH] + [el for el in path_str.split(sep) if el]
     else:
       # filters empty path components
-      yield [CWD] + [el for el in path_str.split(sep) if el]
+      if False:
+        yield [CWD] + [el for el in path_str.split(sep) if el]
+      else:
+        # If we don't generate CWD, no need to handle it anywhere else.
+        yield [el for el in path_str.split(sep) if el]
 
 def tree_from_path_iter(itr, postprocess=None):
   """
@@ -206,19 +210,19 @@ def postprocess_color_quote(parent_path, name):
 
   if name in SPECIALS:
     return name
-  if parent_path[0] == CWD:
-    parent_path = parent_path[1:]
-  elif parent_path[0] == SLASH and len(parent_path) > 1:
-    parent_path[0] = ''
-  elif parent_path[0] == SLASH and len(parent_path) <= 1:
-    parent_path[0] = '/'
-  elif parent_path[0] == SLASHSLASH and len(parent_path) > 1:
-    parent_path[0] = '/'
-  elif parent_path[0] == SLASHSLASH and len(parent_path) <= 1:
-    parent_path[0] = '//'
-  else:
-    assert False
   if parent_path:
+    if parent_path[0] == CWD:
+      parent_path[0] = '.'
+    elif parent_path[0] == SLASH:
+      if len(parent_path) > 1:
+        parent_path[0] = ''
+      else:
+        parent_path[0] = '/'
+    elif parent_path[0] == SLASHSLASH:
+      if len(parent_path) > 1:
+        parent_path[0] = '/'
+      else:
+        parent_path[0] = '//'
     parent_path_str = '/'.join(parent_path)
   else:
     parent_path_str = None
