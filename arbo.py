@@ -246,6 +246,9 @@ def main():
   parser.add_option('--hg',
       action='store_const', dest='source', const='hg',
       help='Display hg-managed files')
+  parser.add_option('--fossil',
+      action='store_const', dest='source', const='fossil',
+      help='Display fossil-managed files')
   parser.add_option('--find',
       action='store_const', dest='source', const='find',
       help='Display files below the current directory')
@@ -307,6 +310,18 @@ def main():
         stdout=subprocess.PIPE,
         ).communicate()[0].rstrip()
     os.chdir(hg_root)
+  elif src == 'fossil':
+    fin = subprocess.Popen(
+      ['fossil', 'ls', ],
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = False
+    colorize = True
+    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
+    fossil_root = subprocess.Popen(
+        ['sh', '-c', 'fossil info |sed -n "s#^local-root:[[:space:]]*##p"', ],
+        stdout=subprocess.PIPE,
+        ).communicate()[0].rstrip()
+    os.chdir(fossil_root)
   elif src == 'find':
     fin = subprocess.Popen(
       ['find', '-print0', ],
