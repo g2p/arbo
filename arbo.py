@@ -282,21 +282,24 @@ def main():
   parser.add_option('--bzr',
       action='store_const', dest='source', const='bzr',
       help='Display bzr-managed files')
-  parser.add_option('--git',
-      action='store_const', dest='source', const='git',
-      help='Display git-managed files')
-  parser.add_option('--svn',
-      action='store_const', dest='source', const='svn',
-      help='Display svn-managed files')
-  parser.add_option('--hg',
-      action='store_const', dest='source', const='hg',
-      help='Display hg-managed files')
+  parser.add_option('--cvs',
+      action='store_const', dest='source', const='cvs',
+      help='Display cvs-managed files')
   parser.add_option('--darcs',
       action='store_const', dest='source', const='darcs',
       help='Display darcs-managed files')
   parser.add_option('--fossil',
       action='store_const', dest='source', const='fossil',
       help='Display fossil-managed files')
+  parser.add_option('--git',
+      action='store_const', dest='source', const='git',
+      help='Display git-managed files')
+  parser.add_option('--hg',
+      action='store_const', dest='source', const='hg',
+      help='Display hg-managed files')
+  parser.add_option('--svn',
+      action='store_const', dest='source', const='svn',
+      help='Display svn-managed files')
   parser.add_option('--find',
       action='store_const', dest='source', const='find',
       help='Display files below the current directory')
@@ -322,7 +325,20 @@ def main():
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
     colorize = True
+  elif src == 'cvs':
+    fin = subprocess.Popen(
+      ['cvsu', '--find', '--types=AFGM', ],
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = False
+    colorize = True
+  elif src == 'svn':
+    fin = subprocess.Popen(
+      ['svn', 'list', '-R', ],
+      stdout=subprocess.PIPE).stdout
+    zero_terminated = True
+    colorize = True
   elif src == 'git':
+    # A bit more complicated to support outside worktree operation.
     fin = subprocess.Popen(
       ['git', 'ls-files', '-z', ],
       stdout=subprocess.PIPE).stdout
@@ -345,31 +361,25 @@ def main():
             stdout=subprocess.PIPE,
             ).communicate()[0].rstrip()
         os.chdir(git_root)
-  elif src == 'svn':
-    fin = subprocess.Popen(
-      ['svn', 'list', '-R', ],
-      stdout=subprocess.PIPE).stdout
-    zero_terminated = True
-    colorize = True
   elif src == 'hg':
     fin = subprocess.Popen(
       ['hg', 'locate', '--include', '.', '-0', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
     colorize = True
-    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
+    # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
     hg_root = subprocess.Popen(
         ['hg', 'root', ],
         stdout=subprocess.PIPE,
         ).communicate()[0].rstrip()
-    os.chdir(hg_root)
+    os.chdir(hg_root) # For colourisation
   elif src == 'darcs':
     fin = subprocess.Popen(
       ['darcs', 'show', 'files', '-0', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
     colorize = True
-    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
+    # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
     darcs_root = subprocess.Popen(
         ['sh', '-c', 'darcs show repo |sed -n "s#^[[:space:]]*Root: ##p"', ],
         stdout=subprocess.PIPE,
@@ -381,7 +391,7 @@ def main():
       stdout=subprocess.PIPE).stdout
     zero_terminated = False
     colorize = True
-    # Unlike git, svn and bzr, this is rooted in the repository not the cwd.
+    # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
     fossil_root = subprocess.Popen(
         ['sh', '-c', 'fossil info |sed -n "s#^local-root:[[:space:]]*##p"', ],
         stdout=subprocess.PIPE,
