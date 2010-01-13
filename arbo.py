@@ -321,7 +321,7 @@ def main():
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
     fin = subprocess.Popen(
-      ['bzr', 'ls', '--versioned', '--null', ],
+      ['bzr', 'ls', '--recursive', '--versioned', '--null', ],
       stdout=subprocess.PIPE).stdout
     zero_terminated = True
     colorize = True
