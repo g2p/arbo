@@ -335,7 +335,7 @@ def main():
     fin = subprocess.Popen(
       ['svn', 'list', '-R', ],
       stdout=subprocess.PIPE).stdout
-    zero_terminated = True
+    zero_terminated = False
     colorize = True
   elif src == 'git':
     # A bit more complicated to support outside worktree operation.
