@@ -1,6 +1,5 @@
 
 import sys
-import string
 
 def readline0(file=sys.stdin, separator='\0', blocksize=65536):
 	# this function assumes that there will be a null once in a while.  If you feed it with a huge block of data that has
@@ -31,7 +30,7 @@ def readline0(file=sys.stdin, separator='\0', blocksize=65536):
 				break
 			else:
 				buffer = block
-		fields = string.splitfields(buffer, separator)
+		fields = buffer.split(separator)
 		for field in fields[:-1]:
 			yield field
 	raise StopIteration

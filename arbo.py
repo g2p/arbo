@@ -1,9 +1,13 @@
-#!/usr/bin/python -S
+#!/usr/bin/python3 -S
 # vim: set fileencoding=utf-8 sw=2 ts=2 et :
 from __future__ import absolute_import
 
+import codecs
+import locale
+import optparse
 import os
 import subprocess
+import sys
 from arbo_readline0 import readline0
 
 SLASH = object()
@@ -19,14 +23,14 @@ except ImportError:
     fillvalue = None
     iterators = tuple(iter(el) for el in iterators)
     okset = set(range(len(iterators)))
-    def next(pos, it):
+    def it_next(pos, it):
       try:
-        return it.next()
+        return next(it)
       except StopIteration:
         okset.discard(pos)
         return fillvalue
     while True:
-      r = tuple(next(pos, it) for (pos, it) in enumerate(iterators))
+      r = tuple(it_next(pos, it) for (pos, it) in enumerate(iterators))
       if not okset: #empty
         raise StopIteration
       yield r
@@ -230,16 +234,13 @@ def postprocess_color_quote(parent_path, name):
   # c-maybe (preferred), c, escape.
   # c-maybe is lacking in jaunty due to old gnulib
   # somewhere in buildd or source pkg.
-  proc = subprocess.Popen([
-      'ls', '-1d', '--color=always', '--quoting-style=escape', '--',
-      name,
-      ],
-    stdout=subprocess.PIPE,
-    cwd=parent_path_str,
-    )
-  outd, errd = proc.communicate()
-  if proc.returncode != 0:
+  try:
+    outd = subprocess.check_output([
+        'ls', '-1d', '--color=always', '--quoting-style=escape', '--',
+        name, ], cwd=parent_path_str)
+  except subprocess.CalledProcessError:
     raise RuntimeError('Failed to postprocess path', parent_path_str, name)
+  outd = outd.decode('utf8')
   newline_pos = outd.find('\n')
   return outd[:newline_pos] # Strip newline and colour reset.
 
@@ -266,10 +267,11 @@ def main():
   diff -u <(tree -a --noreport) <(find |LANG= sort |./arbo.py)
   """
 
-  from optparse import OptionParser
-  import sys
+  locale.setlocale(locale.LC_ALL, '')
+  sysencoding = locale.getpreferredencoding(False)
+  reader_factory = codecs.getreader(sysencoding)
 
-  parser = OptionParser()
+  parser = optparse.OptionParser()
   parser.set_defaults(
       source='stdin',
       zero_terminated=False,
@@ -314,97 +316,84 @@ def main():
   (options, args) = parser.parse_args()
   src = options.source
 
+  # So colours work
+  chdir = None
+
   if src == 'stdin':
+    cmd = None
     fin = sys.stdin
     zero_terminated = options.zero_terminated
     colorize = options.colorize
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
-    fin = subprocess.Popen(
-      ['bzr', 'ls', '--recursive', '--versioned', '--null', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['bzr', 'ls', '--recursive', '--versioned', '--null', ]
     zero_terminated = True
     colorize = True
   elif src == 'cvs':
-    fin = subprocess.Popen(
-      ['cvsu', '--find', '--types=AFGM', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['cvsu', '--find', '--types=AFGM', ]
     zero_terminated = False
     colorize = True
   elif src == 'svn':
-    fin = subprocess.Popen(
-      ['svn', 'list', '-R', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['svn', 'list', '-R', ]
     zero_terminated = False
     colorize = True
   elif src == 'git':
     # A bit more complicated to support outside worktree operation.
-    fin = subprocess.Popen(
-      ['git', 'ls-files', '-z', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['git', 'ls-files', '-z', ]
     zero_terminated = True
     colorize = True
-    is_inside_work_tree = subprocess.Popen(
+    is_inside_work_tree = subprocess.check_output(
         ['git', 'rev-parse', '--is-inside-work-tree', ],
-        stdout=subprocess.PIPE,
-        ).communicate()[0].rstrip() == 'true'
+        ).rstrip() == b'true'
     if not is_inside_work_tree:
-      is_bare_repository = subprocess.Popen(
+      is_bare_repository = subprocess.check_output(
           ['git', 'rev-parse', '--is-bare-repository', ],
-          stdout=subprocess.PIPE,
-          ).communicate()[0].rstrip() == 'true'
+          ).rstrip() == b'true'
       if is_bare_repository:
         colorize = False
       else:
-        git_root = subprocess.Popen(
+        git_root = subprocess.check_output(
             ['git', 'rev-parse', '--show-cdup', ],
-            stdout=subprocess.PIPE,
-            ).communicate()[0].rstrip()
-        os.chdir(git_root)
+            ).rstrip()
+        # Empty if at repo root; correctly bombs outside repo.
+        if git_root:
+          chdir = git_root
   elif src == 'hg':
-    fin = subprocess.Popen(
-      ['hg', 'locate', '--include', '.', '-0', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['hg', 'locate', '--include', '.', '-0', ]
     zero_terminated = True
     colorize = True
-    # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
-    hg_root = subprocess.Popen(
-        ['hg', 'root', ],
-        stdout=subprocess.PIPE,
-        ).communicate()[0].rstrip()
-    os.chdir(hg_root) # For colourisation
+    # Unlike git, svn, cvs and bzr, hg locate output is
+    # rooted in the repo not the cwd.
+    chdir = subprocess.check_output(['hg', 'root', ]).rstrip()
   elif src == 'darcs':
-    fin = subprocess.Popen(
-      ['darcs', 'show', 'files', '-0', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['darcs', 'show', 'files', '-0', ]
     zero_terminated = True
     colorize = True
     # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
-    darcs_root = subprocess.Popen(
+    chdir = subprocess.check_output(
         ['sh', '-c', 'darcs show repo |sed -n "s#^[[:space:]]*Root: ##p"', ],
-        stdout=subprocess.PIPE,
-        ).communicate()[0].rstrip()
-    os.chdir(darcs_root)
+        ).rstrip()
   elif src == 'fossil':
-    fin = subprocess.Popen(
-      ['fossil', 'ls', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['fossil', 'ls', ]
     zero_terminated = False
     colorize = True
     # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
-    fossil_root = subprocess.Popen(
+    chdir = subprocess.check_output(
         ['sh', '-c', 'fossil info |sed -n "s#^local-root:[[:space:]]*##p"', ],
-        stdout=subprocess.PIPE,
-        ).communicate()[0].rstrip()
-    os.chdir(fossil_root)
+        ).rstrip()
   elif src == 'find':
-    fin = subprocess.Popen(
-      ['find', '-print0', ],
-      stdout=subprocess.PIPE).stdout
+    cmd = ['find', '-print0', ]
     zero_terminated = True
     colorize = True
   else:
     raise NotImplementedError
+
+  if cmd:
+    fin_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    fin = reader_factory(fin_proc.stdout)
+
+  if chdir:
+    os.chdir(chdir)
 
   if colorize:
     postprocess = postprocess_color_quote
@@ -415,6 +404,10 @@ def main():
         path_iter_from_file(fin, zero_terminated=zero_terminated),
         postprocess=postprocess),
       sys.stdout)
+  if cmd:
+    returncode = fin_proc.wait()
+    if returncode:
+      raise subprocess.CalledProcessError(cmd, returncode)
 
 if __name__ == '__main__':
   main()
