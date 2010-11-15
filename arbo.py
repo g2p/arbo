@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import codecs
 import locale
-import optparse
+import argparse
 import os
 import subprocess
 import sys
@@ -271,50 +271,50 @@ def main():
   sysencoding = locale.getpreferredencoding(False)
   reader_factory = codecs.getreader(sysencoding)
 
-  parser = optparse.OptionParser()
+  parser = argparse.ArgumentParser()
   parser.set_defaults(
       source='stdin',
       zero_terminated=False,
       colorize=False,
       )
   # Maybe argparse-style subcommands would fit better.
-  parser.add_option('--stdin',
+  parser.add_argument('--stdin',
       action='store_const', dest='source', const='stdin',
       help='Display paths listed from stdin (the default)')
-  parser.add_option('--bzr',
+  parser.add_argument('--bzr',
       action='store_const', dest='source', const='bzr',
       help='Display bzr-managed files')
-  parser.add_option('--cvs',
+  parser.add_argument('--cvs',
       action='store_const', dest='source', const='cvs',
       help='Display cvs-managed files')
-  parser.add_option('--darcs',
+  parser.add_argument('--darcs',
       action='store_const', dest='source', const='darcs',
       help='Display darcs-managed files')
-  parser.add_option('--fossil',
+  parser.add_argument('--fossil',
       action='store_const', dest='source', const='fossil',
       help='Display fossil-managed files')
-  parser.add_option('--git',
+  parser.add_argument('--git',
       action='store_const', dest='source', const='git',
       help='Display git-managed files')
-  parser.add_option('--hg',
+  parser.add_argument('--hg',
       action='store_const', dest='source', const='hg',
       help='Display hg-managed files')
-  parser.add_option('--svn',
+  parser.add_argument('--svn',
       action='store_const', dest='source', const='svn',
       help='Display svn-managed files')
-  parser.add_option('--find',
+  parser.add_argument('--find',
       action='store_const', dest='source', const='find',
       help='Display files below the current directory')
 
-  parser.add_option('-0',
+  parser.add_argument('-0',
       action='store_true', dest='zero_terminated',
       help='Input is zero-terminated')
-  parser.add_option('--color',
+  parser.add_argument('--color',
       action='store_true', dest='colorize',
       help='Input is local file names, which should be colorized')
 
-  (options, args) = parser.parse_args()
-  src = options.source
+  args = parser.parse_args()
+  src = args.source
 
   # So colours work
   chdir = None
@@ -322,8 +322,8 @@ def main():
   if src == 'stdin':
     cmd = None
     fin = sys.stdin
-    zero_terminated = options.zero_terminated
-    colorize = options.colorize
+    zero_terminated = args.zero_terminated
+    colorize = args.colorize
   elif src == 'bzr':
     # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
     cmd = ['bzr', 'ls', '--recursive', '--versioned', '--null', ]
