@@ -1,2 +1,2 @@
 #!/bin/bash
-exec -a "$0" arbo --git "$@"
+exec -a "$0" arbo git "$@"

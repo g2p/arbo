@@ -272,46 +272,67 @@ def main():
   reader_factory = codecs.getreader(sysencoding)
 
   parser = argparse.ArgumentParser()
-  parser.set_defaults(
-      source='stdin',
-      zero_terminated=False,
-      colorize=False,
-      )
-  # Maybe argparse-style subcommands would fit better.
-  parser.add_argument('--stdin',
-      action='store_const', dest='source', const='stdin',
-      help='Display paths listed from stdin (the default)')
-  parser.add_argument('--bzr',
-      action='store_const', dest='source', const='bzr',
-      help='Display bzr-managed files')
-  parser.add_argument('--cvs',
-      action='store_const', dest='source', const='cvs',
-      help='Display cvs-managed files')
-  parser.add_argument('--darcs',
-      action='store_const', dest='source', const='darcs',
-      help='Display darcs-managed files')
-  parser.add_argument('--fossil',
-      action='store_const', dest='source', const='fossil',
-      help='Display fossil-managed files')
-  parser.add_argument('--git',
-      action='store_const', dest='source', const='git',
-      help='Display git-managed files')
-  parser.add_argument('--hg',
-      action='store_const', dest='source', const='hg',
-      help='Display hg-managed files')
-  parser.add_argument('--svn',
-      action='store_const', dest='source', const='svn',
-      help='Display svn-managed files')
-  parser.add_argument('--find',
-      action='store_const', dest='source', const='find',
-      help='Display files below the current directory')
+  # XXX http://bugs.python.org/issue9253
+  sub = parser.add_subparsers(dest='source', default='stdin')
 
-  parser.add_argument('-0',
+  sub_stdin = sub.add_parser('stdin',
+      description='Display paths listed from stdin (the default)')
+  sub_stdin.set_defaults(cmd=None)
+  sub_stdin.add_argument('-0',
       action='store_true', dest='zero_terminated',
       help='Input is zero-terminated')
-  parser.add_argument('--color',
+  sub_stdin.add_argument('--color',
       action='store_true', dest='colorize',
       help='Input is local file names, which should be colorized')
+
+  sub_find = sub.add_parser('find',
+      description='Display files below the current directory')
+  sub_find.set_defaults(
+    cmd=['find', '-print0', ],
+    zero_terminated=True, colorize=True)
+
+  # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
+  sub_bzr = sub.add_parser('bzr',
+      description='Display bzr-managed files')
+  sub_bzr.set_defaults(
+    cmd=['bzr', 'ls', '--recursive', '--versioned', '--null', ],
+    zero_terminated=True, colorize=True)
+
+  sub_cvs = sub.add_parser('cvs',
+      description='Display cvs-managed files')
+  sub_cvs.set_defaults(
+    cmd=['cvsu', '--find', '--types=AFGM', ],
+    zero_terminated=False, colorize=True)
+
+  sub_svn = sub.add_parser('svn',
+      description='Display svn-managed files')
+  sub_svn.set_defaults(
+    cmd=['svn', 'list', '-R', ],
+    zero_terminated=False, colorize=True)
+
+  sub_git = sub.add_parser('git',
+      description='Display git-managed files')
+  sub_git.set_defaults(
+    cmd=['git', 'ls-files', '-z', ],
+    zero_terminated=True, colorize=True)
+
+  sub_hg = sub.add_parser('hg',
+      description='Display hg-managed files')
+  sub_hg.set_defaults(
+    cmd=['hg', 'locate', '--include', '.', '-0', ],
+    zero_terminated=True, colorize=True)
+
+  sub_darcs = sub.add_parser('darcs',
+      description='Display darcs-managed files')
+  sub_darcs.set_defaults(
+    cmd=['darcs', 'show', 'files', '-0', ],
+    zero_terminated=True, colorize=True)
+
+  sub_fossil = sub.add_parser('fossil',
+      description='Display fossil-managed files')
+  sub_fossil.set_defaults(
+    cmd=['fossil', 'ls', ],
+    zero_terminated=False, colorize=True)
 
   args = parser.parse_args()
   src = args.source
@@ -319,29 +340,8 @@ def main():
   # So colours work
   chdir = None
 
-  if src == 'stdin':
-    cmd = None
-    fin = sys.stdin
-    zero_terminated = args.zero_terminated
-    colorize = args.colorize
-  elif src == 'bzr':
-    # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
-    cmd = ['bzr', 'ls', '--recursive', '--versioned', '--null', ]
-    zero_terminated = True
-    colorize = True
-  elif src == 'cvs':
-    cmd = ['cvsu', '--find', '--types=AFGM', ]
-    zero_terminated = False
-    colorize = True
-  elif src == 'svn':
-    cmd = ['svn', 'list', '-R', ]
-    zero_terminated = False
-    colorize = True
-  elif src == 'git':
+  if src == 'git':
     # A bit more complicated to support outside worktree operation.
-    cmd = ['git', 'ls-files', '-z', ]
-    zero_terminated = True
-    colorize = True
     is_inside_work_tree = subprocess.check_output(
         ['git', 'rev-parse', '--is-inside-work-tree', ],
         ).rstrip() == b'true'
@@ -358,56 +358,42 @@ def main():
         # Empty if at repo root; correctly bombs outside repo.
         if git_root:
           chdir = git_root
+  # Unlike git, svn, cvs and bzr, the output of hg, darcs, and fossil
+  # is rooted in the repo.
   elif src == 'hg':
-    cmd = ['hg', 'locate', '--include', '.', '-0', ]
-    zero_terminated = True
-    colorize = True
-    # Unlike git, svn, cvs and bzr, hg locate output is
-    # rooted in the repo not the cwd.
     chdir = subprocess.check_output(['hg', 'root', ]).rstrip()
   elif src == 'darcs':
-    cmd = ['darcs', 'show', 'files', '-0', ]
-    zero_terminated = True
-    colorize = True
-    # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
     chdir = subprocess.check_output(
         ['sh', '-c', 'darcs show repo |sed -n "s#^[[:space:]]*Root: ##p"', ],
         ).rstrip()
   elif src == 'fossil':
-    cmd = ['fossil', 'ls', ]
-    zero_terminated = False
-    colorize = True
-    # Unlike git, svn, cvs and bzr, this is rooted in the repo not the cwd.
     chdir = subprocess.check_output(
         ['sh', '-c', 'fossil info |sed -n "s#^local-root:[[:space:]]*##p"', ],
         ).rstrip()
-  elif src == 'find':
-    cmd = ['find', '-print0', ]
-    zero_terminated = True
-    colorize = True
-  else:
-    raise NotImplementedError
 
-  if cmd:
-    fin_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+  if args.cmd:
+    fin_proc = subprocess.Popen(args.cmd, stdout=subprocess.PIPE)
     fin = reader_factory(fin_proc.stdout)
+  else:
+    fin = sys.stdin
 
   if chdir:
+    # Do this *after* Popen has forked
     os.chdir(chdir)
 
-  if colorize:
+  if args.colorize:
     postprocess = postprocess_color_quote
   else:
     postprocess = None
   display_tree(
       tree_from_path_iter(
-        path_iter_from_file(fin, zero_terminated=zero_terminated),
+        path_iter_from_file(fin, zero_terminated=args.zero_terminated),
         postprocess=postprocess),
       sys.stdout)
-  if cmd:
+  if args.cmd:
     returncode = fin_proc.wait()
     if returncode:
-      raise subprocess.CalledProcessError(cmd, returncode)
+      raise subprocess.CalledProcessError(args.cmd, returncode)
 
 if __name__ == '__main__':
   main()
