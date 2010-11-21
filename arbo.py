@@ -139,7 +139,7 @@ def path_iter_from_line_iter(itr, colorize=False):
 
   if not colorize:
     for path_str in itr:
-      yield split_line(path_str), ''
+      yield split_line(path_str), None
   else:
     while True:
       path_strs = list(itertools.islice(itr, BULK_LS_COUNT))
@@ -203,7 +203,7 @@ def tree_from_path_iter(itr):
       if not diverged:
         node = node0
       else:
-        if color:
+        if color is not None:
           pvalue = color + str_comp + END_COLOR
         else:
           pvalue = str_comp
@@ -255,6 +255,7 @@ def postprocess_path(path_strs):
     #sys.stderr.write('%r\n' % line)
     groups = WITH_COLOR_RE.match(line).groups()
     #sys.stderr.write('%r\n' % (groups,))
+    # color might be None
     color, path_str = groups
     yield path_str, color
 
