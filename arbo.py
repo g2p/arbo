@@ -180,7 +180,7 @@ def split_line(path_str):
     # filter empty path components
     return [el for el in path_str.split('/') if el]
 
-def tree_from_path_iter(itr):
+def tree_from_path_iter(itr, skip_dot):
   """
   Convert a path_iter-style iterator to a tree.
 
@@ -214,6 +214,8 @@ def tree_from_path_iter(itr):
       parent = node
 
     node_path0 = node_path
+  if skip_dot and len(root.children) == 1 and root.children[0].value == '.':
+    root = root.children[0]
   return root
 
 def postprocess_path(path_strs):
@@ -281,6 +283,7 @@ def main():
   reader_factory = codecs.getreader(sysencoding)
 
   parser = argparse.ArgumentParser()
+
   # XXX http://bugs.python.org/issue9253
   sub = parser.add_subparsers(dest='source', default='stdin')
 
@@ -297,33 +300,36 @@ def main():
   sub_stdin.add_argument('--color',
       action='store_true', dest='colorize',
       help='Input is local file names, which should be colorized')
+  sub_stdin.add_argument('--skip-dot',
+      action='store_true', dest='skip_dot',
+      help='Input filenames are expected to all start with a dot; '
+           'don\'t display the dot')
 
-  # This one includes a dot
   sub_find = sub.add_parser('find',
       description='Display files below the current directory')
   sub_find.set_defaults(
     cmd=['find', '-print0', ],
-    zero_terminated=True, colorize=True)
+    zero_terminated=True, colorize=True, skip_dot=True)
 
   sub_dpkg = sub.add_parser('dpkg',
       description='List a package\'s files')
   sub_dpkg.add_argument('package')
   sub_dpkg.set_defaults(
     cmd=['dpkg', '-L', '--', ],
-    zero_terminated=False, colorize=True)
+    zero_terminated=False, colorize=True, skip_dot=False)
 
   # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
   sub_bzr = sub.add_parser('bzr',
       description='Display bzr-managed files')
   sub_bzr.set_defaults(
     cmd=['bzr', 'ls', '--recursive', '--versioned', '--null', ],
-    zero_terminated=True, colorize=True)
+    zero_terminated=True, colorize=True, skip_dot=False)
 
   sub_cvs = sub.add_parser('cvs',
       description='Display cvs-managed files')
   sub_cvs.set_defaults(
     cmd=['cvsu', '--find', '--types=AFGM', ],
-    zero_terminated=False, colorize=True)
+    zero_terminated=False, colorize=True, skip_dot=False)
 
   # This one is way too slow.
   # The only command to go online.
@@ -331,32 +337,31 @@ def main():
       description='Display svn-managed files')
   sub_svn.set_defaults(
     cmd=['svn', 'list', '-R', ],
-    zero_terminated=False, colorize=True)
+    zero_terminated=False, colorize=True, skip_dot=False)
 
   sub_git = sub.add_parser('git',
       description='Display git-managed files')
   sub_git.set_defaults(
     cmd=['git', 'ls-files', '-z', ],
-    zero_terminated=True, colorize=True)
+    zero_terminated=True, colorize=True, skip_dot=False)
 
   sub_hg = sub.add_parser('hg',
       description='Display hg-managed files')
   sub_hg.set_defaults(
     cmd=['hg', 'locate', '--include', '.', '-0', ],
-    zero_terminated=True, colorize=True)
+    zero_terminated=True, colorize=True, skip_dot=False)
 
-  # This one includes a dot
   sub_darcs = sub.add_parser('darcs',
       description='Display darcs-managed files')
   sub_darcs.set_defaults(
     cmd=['darcs', 'show', 'files', '-0', ],
-    zero_terminated=True, colorize=True)
+    zero_terminated=True, colorize=True, skip_dot=True)
 
   sub_fossil = sub.add_parser('fossil',
       description='Display fossil-managed files')
   sub_fossil.set_defaults(
     cmd=['fossil', 'ls', ],
-    zero_terminated=False, colorize=True)
+    zero_terminated=False, colorize=True, skip_dot=False)
 
   args = parser.parse_args()
   src = args.source
@@ -419,7 +424,7 @@ def main():
   path_iter = path_iter_from_line_iter(line_iter, colorize=args.colorize)
   # We can't directly convert iterators without building a tree,
   # because computing last_vector requires seeking forward.
-  tree = tree_from_path_iter(path_iter)
+  tree = tree_from_path_iter(path_iter, skip_dot=args.skip_dot)
   display_tree(tree, sys.stdout)
 
   if args.cmd:
