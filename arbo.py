@@ -12,10 +12,12 @@ import subprocess
 import sys
 from arbo_readline0 import readline0
 
-SLASH = object()
-SLASHSLASH = object()
-CWD = object()
-SPECIALS = (SLASH, SLASHSLASH, CWD)
+# Used for filesystem root and POSIX alternative root
+# Path components otherwise never contain slashes
+# These must be handled specially so neither is a prefix of the other
+SLASH = '/'
+SLASHSLASH = '//'
+SPECIALS = (SLASH, SLASHSLASH)
 
 START_COLOR = '\033'
 WITH_COLOR_RE = re.compile(
@@ -100,12 +102,8 @@ def traverse_tree_skip_root(root):
   """
 
   for node in root.children:
-    if node.value == CWD:
-      for e in traverse_tree_skip_root(node):
-        yield e
-    else:
-      for e in traverse_tree(node, []):
-        yield e
+    for e in traverse_tree(node, []):
+      yield e
 
 STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
 STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
@@ -128,24 +126,13 @@ def display_tree(tree_root, out, style=STYLE_UNICODE):
         out.write(style[2])
       else:
         out.write(style[3])
-    if value == SLASH:
-      out.write('/')
-      if not has_single_child:
-        out.write('\n')
-    elif value == SLASHSLASH:
-      out.write('//')
-      if not has_single_child:
-        out.write('\n')
-    elif value == CWD:
-      if not has_single_child:
-        out.write('.\n')
+    # May need quoting / escaping (already done if --color was used)
+    out.write(value)
+    if not has_single_child:
+      out.write('\n')
     else:
-      # May need quoting / escaping
-      out.write(value)
-      if has_single_child:
+      if value not in SPECIALS:
         out.write('/')
-      else:
-        out.write('\n')
     is_single_child = has_single_child
 
 def line_iter_from_file(infile, zero_terminated=False):
@@ -161,7 +148,7 @@ def line_iter_from_file(infile, zero_terminated=False):
 
 BULK_LS_COUNT = 400
 
-def path_iter_from_line_iter(itr, sep='/', colorize=False):
+def path_iter_from_line_iter(itr, colorize=False):
   """
   Break a line iterator into one of sequences of path components.
   """
@@ -198,21 +185,15 @@ sys     0m0.070s
 
 '''
 
-def split_line(path_str, sep='/'):
-  # XXX sep and SLASHSLASH: we're only really supporting sep=/
-
+def split_line(path_str):
   if path_str[:2] == '//' and path_str[:3] != '///':
     # // special semantics (cf POSIX)
-    return [SLASHSLASH] + [el for el in path_str.split(sep) if el]
+    return [SLASHSLASH] + [el for el in path_str.split('/') if el]
   elif path_str[:1] == '/':
-    return [SLASH] + [el for el in path_str.split(sep) if el]
+    return [SLASH] + [el for el in path_str.split('/') if el]
   else:
-    # filters empty path components
-    if False:
-      return [CWD] + [el for el in path_str.split(sep) if el]
-    else:
-      # If we don't generate CWD, no need to handle it anywhere else.
-      return [el for el in path_str.split(sep) if el]
+    # filter empty path components
+    return [el for el in path_str.split('/') if el]
 
 def tree_from_path_iter(itr):
   """
@@ -291,15 +272,6 @@ def postprocess_path(path_strs):
   if proc.wait():
     raise RuntimeError('Failed to postprocess paths')
 
-def traverse_tree_from_path_iter_XXX(itr):
-  """
-  Convert a path_iter-style iterator to a traverse_tree iterator.
-
-  We can't directly convert iterators without building a tree,
-  because computing last_vector requires seeking forward.
-  """
-
-  return traverse_tree_skip_root(tree_from_path_iter(itr))
 
 def main():
   """
@@ -430,6 +402,8 @@ def main():
 
   line_iter = line_iter_from_file(fin, zero_terminated=args.zero_terminated)
   path_iter = path_iter_from_line_iter(line_iter, colorize=args.colorize)
+  # We can't directly convert iterators without building a tree,
+  # because computing last_vector requires seeking forward.
   tree = tree_from_path_iter(path_iter)
   display_tree(tree, sys.stdout)
 
