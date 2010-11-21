@@ -19,11 +19,20 @@ SLASH = '/'
 SLASHSLASH = '//'
 SPECIALS = (SLASH, SLASHSLASH)
 
+# We parse ls output for efficiency and accuracy.
+# Output is escaped so the only escapes and newlines are the ones ls adds.
 START_COLOR = '\033'
 WITH_COLOR_RE = re.compile(
   r'^(\033\[0m)?(\033\[[0-9]+;[0-9]+m)?([^\n\033]+)(\033\[0m)?\n(\033\[m)?$')
 END_COLOR = '\033[0m'
 END_LS = '\033[m'
+
+# Ways to display a tree
+STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
+STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
+
+# How many paths in one ls call
+BULK_LS_COUNT = 400
 
 
 class Node(object):
@@ -85,9 +94,6 @@ def traverse_tree_skip_root(root):
     for e in traverse_tree(node, []):
       yield e
 
-STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
-STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
-
 def display_tree(tree_root, out, style=STYLE_UNICODE):
   """
   Display an ASCII tree from a tree object.
@@ -125,8 +131,6 @@ def line_iter_from_file(infile, zero_terminated=False):
     return readline0(infile)
   else:
     return (line.rstrip() for line in infile)
-
-BULK_LS_COUNT = 400
 
 def path_iter_from_line_iter(itr, colorize=False):
   """
@@ -217,15 +221,20 @@ def postprocess_path(path_strs):
   Take a path, colorize and quote it.
 
   Assumes the path is to an existing file, rooted in the current directory.
+
   ls's colorisation logic is complicated, it has to handle stuff like
   LS_COLORS and that means parsing a lot of stat info.
 
   Delegating to ls is also hard, unless we change directories as often
-  as necessary so that we don't have to edit output. Editing output would
-  be hard because colours could be complicated to parse.
-  ls output must be gotten line by line so that our tree decorations
-  don't get colored.
-  delegating to ls also buys us flexible escaping and quoting.
+  as necessary so that we don't have to edit output. Editing output
+  is hard because colour escapes can be tricky.
+  Calling ls is more conveniently done line by line so that our tree
+  decorations don't get colored.
+  Delegating to ls also buys us flexible escaping and quoting.
+
+  This used to be done line by line with directory changes,
+  until I bit the bullet and made it edit the ansi escapes in ls output.
+  Escape changes, which LS_COLORS can also contain, aren't handled yet.
   """
 
   # Acceptable quoting styles:
@@ -259,8 +268,8 @@ def main():
   Read from stdin, display to stdout.
 
   These two should be identical apart for unicode/terminal escaping,
-  the switch to non-ascii tree style, and color
-  find |LANG= sort |./arbo.py
+  the switch to non-ascii tree style, and color subtleties
+  find |LANG= sort |./arbo.py stdin --color
   tree -a --noreport
 
   With bash:
@@ -290,6 +299,13 @@ def main():
   sub_find.set_defaults(
     cmd=['find', '-print0', ],
     zero_terminated=True, colorize=True)
+
+  sub_dpkg = sub.add_parser('dpkg',
+      description='List a package\'s files')
+  sub_dpkg.add_argument('package')
+  sub_dpkg.set_defaults(
+    cmd=['dpkg', '-L', '--', ],
+    zero_terminated=False, colorize=True)
 
   # http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
   sub_bzr = sub.add_parser('bzr',
@@ -370,6 +386,8 @@ def main():
     chdir = subprocess.check_output(
         ['sh', '-c', 'fossil info |sed -n "s#^local-root:[[:space:]]*##p"', ],
         ).rstrip()
+  elif src == 'dpkg':
+    args.cmd.append(args.package)
 
   if args.cmd:
     fin_proc = subprocess.Popen(args.cmd, stdout=subprocess.PIPE)
