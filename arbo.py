@@ -23,7 +23,7 @@ SPECIALS = (SLASH, SLASHSLASH)
 # Output is escaped so the only escapes and newlines are the ones ls adds.
 START_COLOR = '\033'
 WITH_COLOR_RE = re.compile(
-  r'^(\033\[0m)?(\033\[[0-9]+;[0-9]+m)?([^\n\033]+)(\033\[0m)?\n(\033\[m)?$')
+  r'^(?:\033\[0m)?(\033\[[0-9]+;[0-9]+m)?([^\n\033]+)(?:\033\[(?:0m|K))*\n(?:\033\[m)?$')
 END_COLOR = '\033[0m'
 END_LS = '\033[m'
 
@@ -255,8 +255,7 @@ def postprocess_path(path_strs):
     #sys.stderr.write('%r\n' % line)
     groups = WITH_COLOR_RE.match(line).groups()
     #sys.stderr.write('%r\n' % (groups,))
-    # r0, r1, r2: all reset sequences
-    r0, color, path_str, r1, r2 = groups
+    color, path_str = groups
     yield path_str, color
 
   if proc.wait():
@@ -298,6 +297,7 @@ def main():
       action='store_true', dest='colorize',
       help='Input is local file names, which should be colorized')
 
+  # This one includes a dot
   sub_find = sub.add_parser('find',
       description='Display files below the current directory')
   sub_find.set_defaults(
@@ -324,6 +324,8 @@ def main():
     cmd=['cvsu', '--find', '--types=AFGM', ],
     zero_terminated=False, colorize=True)
 
+  # This one is way too slow.
+  # The only command to go online.
   sub_svn = sub.add_parser('svn',
       description='Display svn-managed files')
   sub_svn.set_defaults(
@@ -342,6 +344,7 @@ def main():
     cmd=['hg', 'locate', '--include', '.', '-0', ],
     zero_terminated=True, colorize=True)
 
+  # This one includes a dot
   sub_darcs = sub.add_parser('darcs',
       description='Display darcs-managed files')
   sub_darcs.set_defaults(
