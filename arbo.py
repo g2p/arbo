@@ -25,26 +25,6 @@ WITH_COLOR_RE = re.compile(
 END_COLOR = '\033[0m'
 END_LS = '\033[m'
 
-try:
-  from itertools import izip_longest
-except ImportError:
-  # Not a perfect reimpl, but sufficient
-  def izip_longest(*iterators):
-    fillvalue = None
-    iterators = tuple(iter(el) for el in iterators)
-    okset = set(range(len(iterators)))
-    def it_next(pos, it):
-      try:
-        return next(it)
-      except StopIteration:
-        okset.discard(pos)
-        return fillvalue
-    while True:
-      r = tuple(it_next(pos, it) for (pos, it) in enumerate(iterators))
-      if not okset: #empty
-        raise StopIteration
-      yield r
-
 
 class Node(object):
   """
@@ -116,7 +96,7 @@ def display_tree(tree_root, out, style=STYLE_UNICODE):
   is_single_child = False
   for (value, last_vector, has_single_child) in \
       traverse_tree_skip_root(tree_root):
-    if last_vector and not is_single_child: #tests for emptiness
+    if bool(last_vector) and not is_single_child:
       for is_last in last_vector[:-1]:
         if is_last:
           out.write(style[0])
@@ -187,7 +167,8 @@ sys     0m0.070s
 
 def split_line(path_str):
   if path_str[:2] == '//' and path_str[:3] != '///':
-    # // special semantics (cf POSIX)
+    # // special semantics (cf POSIX, last paragraph:)
+    # http://www.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap04.html#tag_04_11
     return [SLASHSLASH] + [el for el in path_str.split('/') if el]
   elif path_str[:1] == '/':
     return [SLASH] + [el for el in path_str.split('/') if el]
@@ -210,7 +191,7 @@ def tree_from_path_iter(itr):
     node_path = []
     diverged = False
 
-    for node0, str_comp in izip_longest(node_path0, str_path):
+    for node0, str_comp in itertools.zip_longest(node_path0, str_path):
       if str_comp is None:
         break
 
