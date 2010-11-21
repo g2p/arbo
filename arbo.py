@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 import codecs
+import itertools
 import locale
 import argparse
 import os
@@ -20,6 +21,7 @@ START_COLOR = '\033'
 WITH_COLOR_RE = re.compile(
   r'^(\033\[0m)?(\033\[[0-9]+;[0-9]+m)?([^\n\033]+)(\033\[0m)?\n(\033\[m)?$')
 END_COLOR = '\033[0m'
+END_LS = '\033[m'
 
 try:
   from itertools import izip_longest
@@ -157,17 +159,44 @@ def line_iter_from_file(infile, zero_terminated=False):
   else:
     return (line.rstrip() for line in infile)
 
+BULK_LS_COUNT = 400
+
 def path_iter_from_line_iter(itr, sep='/', colorize=False):
   """
   Break a line iterator into one of sequences of path components.
   """
 
-  for path_str in itr:
-    if colorize:
-      path_str, color = postprocess_path(path_str)
-    else:
-      color = ''
-    yield split_line(path_str), color
+  if not colorize:
+    for path_str in itr:
+      yield split_line(path_str), ''
+  else:
+    while True:
+      path_strs = list(itertools.islice(itr, BULK_LS_COUNT))
+      if not path_strs:
+        return
+      for (path_str, color) in postprocess_path(path_strs):
+        yield split_line(path_str), color
+
+'''
+git.git produces 2110 lines of arbo output.
+
+
+Perf with git.git, a warm cache, ls per line:
+real    0m18.375s
+user    0m15.450s
+sys     0m9.000s
+
+Perf with git.git, a warm cache, ls in bulk by 40:
+real    0m1.026s
+user    0m0.690s
+sys     0m0.270s
+
+Bulk by 400:
+real    0m0.558s
+user    0m0.390s
+sys     0m0.070s
+
+'''
 
 def split_line(path_str, sep='/'):
   # XXX sep and SLASHSLASH: we're only really supporting sep=/
@@ -221,7 +250,7 @@ def tree_from_path_iter(itr):
     node_path0 = node_path
   return root
 
-def postprocess_path(path_str):
+def postprocess_path(path_strs):
   """
   Take a path, colorize and quote it.
 
@@ -243,19 +272,24 @@ def postprocess_path(path_str):
   # c-maybe (preferred), c, escape.
   # c-maybe is lacking in jaunty due to an old gnulib
   # somewhere in buildd or source pkg.
-  try:
-    outd = subprocess.check_output(
-        'ls -1d --color=always --quoting-style=escape --'.split() \
-        + [ path_str, ])
-  except subprocess.CalledProcessError:
-    raise RuntimeError('Failed to postprocess path', parent_path_str, name)
-  outd = outd.decode('utf8')
-  #sys.stderr.write('%r\n' % outd)
-  groups = WITH_COLOR_RE.match(outd).groups()
-  #sys.stderr.write('%r\n' % (groups,))
-  # r0, r1, r2: all reset sequences
-  r0, color, outd, r1, r2 = groups
-  return outd, color
+  proc = subprocess.Popen(
+      'ls -1d --color=always --quoting-style=escape --'.split() \
+      + path_strs, stdout=subprocess.PIPE)
+
+  for line in proc.stdout:
+    line = line.decode('utf8')
+    if line == END_LS:
+      continue
+
+    #sys.stderr.write('%r\n' % line)
+    groups = WITH_COLOR_RE.match(line).groups()
+    #sys.stderr.write('%r\n' % (groups,))
+    # r0, r1, r2: all reset sequences
+    r0, color, path_str, r1, r2 = groups
+    yield path_str, color
+
+  if proc.wait():
+    raise RuntimeError('Failed to postprocess paths')
 
 def traverse_tree_from_path_iter_XXX(itr):
   """
