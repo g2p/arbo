@@ -284,6 +284,10 @@ def main():
   # XXX http://bugs.python.org/issue9253
   sub = parser.add_subparsers(dest='source', default='stdin')
 
+  sub_help = sub.add_parser('help',
+      description='Print usage help')
+  sub_help.add_argument('command', nargs='?')
+
   sub_stdin = sub.add_parser('stdin',
       description='Display paths listed from stdin (the default)')
   sub_stdin.set_defaults(cmd=None)
@@ -356,7 +360,15 @@ def main():
   # So colours work
   chdir = None
 
-  if src == 'git':
+  if src == 'help':
+    # Not really a source, this subcommand just shows the help
+    if args.command is None or args.command not in sub._name_parser_map:
+      parser.print_help()
+    else:
+      sub._name_parser_map[args.command].print_help()
+    return
+
+  elif src == 'git':
     # A bit more complicated to support outside worktree operation.
     is_inside_work_tree = subprocess.check_output(
         ['git', 'rev-parse', '--is-inside-work-tree', ],
@@ -412,7 +424,7 @@ def main():
       raise subprocess.CalledProcessError(args.cmd, returncode)
 
 if __name__ == '__main__':
-  main()
+  sys.exit(main())
 
 """
 Ideas:
