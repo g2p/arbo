@@ -6,6 +6,7 @@ import codecs
 import locale
 import argparse
 import os
+import re
 import subprocess
 import sys
 from arbo_readline0 import readline0
@@ -14,6 +15,11 @@ SLASH = object()
 SLASHSLASH = object()
 CWD = object()
 SPECIALS = (SLASH, SLASHSLASH, CWD)
+
+START_COLOR = '\033'
+WITH_COLOR_RE = re.compile(
+  r'^(\033\[0m)?(\033\[[0-9]+;[0-9]+m)?([^\n\033]+)(\033\[0m)?\n(\033\[m)?$')
+END_COLOR = '\033[0m'
 
 try:
   from itertools import izip_longest
@@ -140,31 +146,46 @@ def display_tree(tree_root, out, style=STYLE_UNICODE):
         out.write('\n')
     is_single_child = has_single_child
 
-def path_iter_from_file(infile, sep='/', zero_terminated=False):
+def line_iter_from_file(infile, zero_terminated=False):
   """
-  Break a file into an iterator of sequences of path components.
+  Break a file into a line iterator.
   """
 
   if zero_terminated:
     # http://stromberg.dnsalias.org/~strombrg/readline0.html
-    itr = readline0(infile)
+    return readline0(infile)
   else:
-    itr = (line.rstrip() for line in infile)
-  for path_str in itr:
-    if path_str[:2] == '//' and path_str[:3] != '///':
-      # // special semantics (cf POSIX)
-      yield [SLASHSLASH] + [el for el in path_str.split(sep) if el]
-    elif path_str[:1] == '/':
-      yield [SLASH] + [el for el in path_str.split(sep) if el]
-    else:
-      # filters empty path components
-      if False:
-        yield [CWD] + [el for el in path_str.split(sep) if el]
-      else:
-        # If we don't generate CWD, no need to handle it anywhere else.
-        yield [el for el in path_str.split(sep) if el]
+    return (line.rstrip() for line in infile)
 
-def tree_from_path_iter(itr, postprocess=None):
+def path_iter_from_line_iter(itr, sep='/', colorize=False):
+  """
+  Break a line iterator into one of sequences of path components.
+  """
+
+  for path_str in itr:
+    if colorize:
+      path_str, color = postprocess_path(path_str)
+    else:
+      color = ''
+    yield split_line(path_str), color
+
+def split_line(path_str, sep='/'):
+  # XXX sep and SLASHSLASH: we're only really supporting sep=/
+
+  if path_str[:2] == '//' and path_str[:3] != '///':
+    # // special semantics (cf POSIX)
+    return [SLASHSLASH] + [el for el in path_str.split(sep) if el]
+  elif path_str[:1] == '/':
+    return [SLASH] + [el for el in path_str.split(sep) if el]
+  else:
+    # filters empty path components
+    if False:
+      return [CWD] + [el for el in path_str.split(sep) if el]
+    else:
+      # If we don't generate CWD, no need to handle it anywhere else.
+      return [el for el in path_str.split(sep) if el]
+
+def tree_from_path_iter(itr):
   """
   Convert a path_iter-style iterator to a tree.
 
@@ -174,31 +195,35 @@ def tree_from_path_iter(itr, postprocess=None):
 
   root = Node('ROOT', 'ROOT')
   node_path0 = []
-  for str_path in itr:
+  for (str_path, color) in itr:
     parent = root
     node_path = []
     diverged = False
+
     for node0, str_comp in izip_longest(node_path0, str_path):
       if str_comp is None:
         break
+
       diverged |= node0 is None or node0.value != str_comp
       if not diverged:
         node = node0
       else:
-        if postprocess:
-          pvalue = postprocess(str_path[:len(node_path)], str_comp)
+        if color:
+          pvalue = color + str_comp + END_COLOR
         else:
           pvalue = str_comp
         node = Node(str_comp, pvalue)
         parent.children.append(node)
+
       node_path.append(node)
       parent = node
+
     node_path0 = node_path
   return root
 
-def postprocess_color_quote(parent_path, name):
+def postprocess_path(path_str):
   """
-  Take a path, colorize the last path element (or the full path, for now).
+  Take a path, colorize and quote it.
 
   Assumes the path is to an existing file, rooted in the current directory.
   ls's colorisation logic is complicated, it has to handle stuff like
@@ -212,37 +237,25 @@ def postprocess_color_quote(parent_path, name):
   delegating to ls also buys us flexible escaping and quoting.
   """
 
-  if name in SPECIALS:
-    return name
-  if parent_path:
-    if parent_path[0] == CWD:
-      parent_path[0] = '.'
-    elif parent_path[0] == SLASH:
-      if len(parent_path) > 1:
-        parent_path[0] = ''
-      else:
-        parent_path[0] = '/'
-    elif parent_path[0] == SLASHSLASH:
-      if len(parent_path) > 1:
-        parent_path[0] = '/'
-      else:
-        parent_path[0] = '//'
-    parent_path_str = '/'.join(parent_path)
-  else:
-    parent_path_str = None
-  # Acceptable quoting styles: those that don't keep newlines.
+  # Acceptable quoting styles:
+  # - mustn't keep newlines.
+  # - mustn't keep \e (used in ansi color escapes).
   # c-maybe (preferred), c, escape.
-  # c-maybe is lacking in jaunty due to old gnulib
+  # c-maybe is lacking in jaunty due to an old gnulib
   # somewhere in buildd or source pkg.
   try:
-    outd = subprocess.check_output([
-        'ls', '-1d', '--color=always', '--quoting-style=escape', '--',
-        name, ], cwd=parent_path_str)
+    outd = subprocess.check_output(
+        'ls -1d --color=always --quoting-style=escape --'.split() \
+        + [ path_str, ])
   except subprocess.CalledProcessError:
     raise RuntimeError('Failed to postprocess path', parent_path_str, name)
   outd = outd.decode('utf8')
-  newline_pos = outd.find('\n')
-  return outd[:newline_pos] # Strip newline and colour reset.
+  #sys.stderr.write('%r\n' % outd)
+  groups = WITH_COLOR_RE.match(outd).groups()
+  #sys.stderr.write('%r\n' % (groups,))
+  # r0, r1, r2: all reset sequences
+  r0, color, outd, r1, r2 = groups
+  return outd, color
 
 def traverse_tree_from_path_iter_XXX(itr):
   """
@@ -381,15 +394,11 @@ def main():
     # Do this *after* Popen has forked
     os.chdir(chdir)
 
-  if args.colorize:
-    postprocess = postprocess_color_quote
-  else:
-    postprocess = None
-  display_tree(
-      tree_from_path_iter(
-        path_iter_from_file(fin, zero_terminated=args.zero_terminated),
-        postprocess=postprocess),
-      sys.stdout)
+  line_iter = line_iter_from_file(fin, zero_terminated=args.zero_terminated)
+  path_iter = path_iter_from_line_iter(line_iter, colorize=args.colorize)
+  tree = tree_from_path_iter(path_iter)
+  display_tree(tree, sys.stdout)
+
   if args.cmd:
     returncode = fin_proc.wait()
     if returncode:
