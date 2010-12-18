@@ -23,7 +23,7 @@ SPECIALS = (SLASH, SLASHSLASH)
 # Output is escaped so the only escapes and newlines are the ones ls adds.
 START_COLOR = '\033'
 WITH_COLOR_RE = re.compile(
-  r'^(?:\033\[0m)?(\033\[[0-9]+;[0-9]+m)?([^\n\033]+)(?:\033\[(?:0m|K))*\n(?:\033\[m)?$')
+  r'^(?:\033\[0m)?(\033\[[0-9]+;[0-9]+m)?[^\n\033]*?([^/\n\033]*/*)(?:\033\[(?:0m|K))*\n(?:\033\[m)?$')
 END_COLOR = '\033[0m'
 END_LS = '\033[m'
 
@@ -74,9 +74,13 @@ class NodeTraversal(object):
     return bool(self.node.children)
 
   @property
+  def is_root(self):
+    return self.parent is None
+
+  @property
   def path_str(self):
     # Don't use the ROOT node as a parent.
-    if self.parent is not None and self.parent.parent is not None:
+    if not self.is_root and not self.parent.is_root:
       r = self.parent.path_str
       if self.parent not in SPECIALS:
         r += '/'
@@ -89,7 +93,7 @@ class NodeTraversal(object):
     # XXX there's probably a way to avoid this loop entirely
     a = self.parent
     rev_list = []
-    while a is not None and a.parent is not None:
+    while a is not None and not a.is_root:
       rev_list.insert(0, a)
       a = a.parent
     return rev_list
@@ -169,7 +173,6 @@ def traverse_tree(nt0, wide, skip_root):
   """
 
   if not skip_root:
-    #sys.stderr.write(nt0.node.path_str + '\n')
     yield nt0
 
   for nt in iter_with_first_last(nt0):
@@ -331,10 +334,9 @@ def postprocess_path(nt_bulk):
     groups = WITH_COLOR_RE.match(line).groups()
     #sys.stderr.write('%r\n' % (groups,))
     # color might be None
-    color, path_str = groups
-    value = path_str.rsplit('/', 1)[-1]
+    color, last_component = groups
     node.color = color
-    node.value = value
+    node.value = last_component
 
   if proc.wait():
     raise RuntimeError('Failed to postprocess paths')
