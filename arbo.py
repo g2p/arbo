@@ -47,21 +47,21 @@ class Node(object):
   Value is a path element.
   """
 
-  def __init__(self, value, pvalue, children=None):
-    if children is None:
-      children = []
+  def __init__(self, value):
     self.value = value
-    self.pvalue = pvalue
-    self.children = children
+    self.color = None
+    self.children = []
 
-  def __repr__(self):
-    if self.children == []:
-      return 'Node(%r, %r)' % (self.value, self.pvalue)
-    return 'Node(%r, %r, %r)' % (self.value, self.pvalue, self.children)
+  @property
+  def pvalue(self):
+    if self.color is not None:
+      return self.color + self.value + END_COLOR
+    return self.value
 
 class NodeTraversal(object):
-  def __init__(self, node, is_first_sib, is_last_sib):
+  def __init__(self, node, parent, is_first_sib, is_last_sib):
     self.node = node
+    self.parent = parent
     self.is_first_sib = is_first_sib
     self.is_last_sib = is_last_sib
 
@@ -73,33 +73,64 @@ class NodeTraversal(object):
   def has_children(self):
     return bool(self.node.children)
 
-def traverse_tree_skip_root(root, wide):
+  @property
+  def path_str(self):
+    # Don't use the ROOT node as a parent.
+    if self.parent is not None and self.parent.parent is not None:
+      r = self.parent.path_str
+      if self.parent not in SPECIALS:
+        r += '/'
+    else:
+      r = ''
+    r += self.node.value
+    return r
+
+  def iter_parents(self):
+    # XXX there's probably a way to avoid this loop entirely
+    a = self.parent
+    rev_list = []
+    while a is not None and a.parent is not None:
+      rev_list.insert(0, a)
+      a = a.parent
+    return rev_list
+
+
+def traverse_tree_skip_root(root, wide, colorize):
   """
   Tree traversal, skipping the root.
-
-  Like traverse_tree, but you don't need to initialize parent_vector
-  and you skip the root.
   """
 
-  root_cursor = NodeTraversal(root, True, True)
-  return traverse_tree(root_cursor, wide, [], True)
+  root_cursor = NodeTraversal(root, None, True, True)
+  itr = traverse_tree(root_cursor, wide, True)
+  if colorize:
+    return colorize_nt_iter(itr)
+  return itr
 
-def display_tree(tree_root, out, wide):
+def colorize_nt_iter(itr):
+  while True:
+    nt_bulk = list(itertools.islice(itr, BULK_LS_COUNT))
+    if not nt_bulk:
+      return
+    postprocess_path(nt_bulk)
+    for nt in nt_bulk:
+      yield nt
+
+def display_tree(tree_root, out, wide, colorize):
+  nt_iter = traverse_tree_skip_root(tree_root, wide=wide, colorize=colorize)
   if wide:
-    display_tree_wide(tree_root, out)
+    display_tree_wide(tree_root, out, nt_iter)
   else:
-    display_tree_narrow(tree_root, out)
+    display_tree_narrow(tree_root, out, nt_iter)
 
-def display_tree_narrow(tree_root, out, style=STYLE_UNICODE):
+def display_tree_narrow(tree_root, out, nt_iter, style=STYLE_UNICODE):
   """
   Display an ASCII tree from a tree object.
   """
 
   is_single_child = False
-  for (nt, parent_vector) in \
-      traverse_tree_skip_root(tree_root, wide=False):
+  for nt in nt_iter:
     if not is_single_child:
-      for nt1 in parent_vector:
+      for nt1 in nt.iter_parents():
         if nt1.is_last_sib:
           out.write(style[0])
         else:
@@ -117,63 +148,44 @@ def display_tree_narrow(tree_root, out, style=STYLE_UNICODE):
         out.write('/')
     is_single_child = nt.has_single_child
 
-def iter_with_first_last(iterable):
+def iter_with_first_last(nt):
   """
   Yield elem, is_first, is_last, from an iterable.
   """
 
   el0 = None
   is_first = True
-  for el in iterable:
+  for el in nt.node.children:
     if el0 is not None:
-      yield NodeTraversal(el0, is_first, False)
+      yield NodeTraversal(el0, nt, is_first, False)
       is_first = False
     el0 = el
   if el0 is not None:
-    yield NodeTraversal(el0, is_first, True)
+    yield NodeTraversal(el0, nt, is_first, True)
 
-def traverse_tree(nt0, wide,
-    parent_vector, skip_root):
+def traverse_tree(nt0, wide, skip_root):
   """
-  Traverse a tree in an order appropriate for graphic display.
-
-  Traverse a tree in depth-first order. Return a
-  (node_traversal, parent_vector)
-  iterator where node_traversal tracks the node and some of its position
-  in the tree, and parent_vector tracks
-  which nodes in the parent chain are
-  the last of their siblings.
-  If wide, parent_vector tracks the width of the parents.
-
-  parent_vector is important for display, because
-  parent_vector.is_last_sib tells where vertical lines end.
+  Traverse a tree in depth-first order.
   """
 
   if not skip_root:
-    yield (nt0, parent_vector[:-1])
+    #sys.stderr.write(nt0.node.path_str + '\n')
+    yield nt0
 
-  if not nt0.has_children:
-    return
-
-  parent_vector.append(False)
-
-  for nt in iter_with_first_last(nt0.node.children):
-    parent_vector[-1] = nt
-    for e in traverse_tree(nt, wide, parent_vector, False):
+  for nt in iter_with_first_last(nt0):
+    for e in traverse_tree(nt, wide, False):
       yield e
-  parent_vector.pop()
 
-def display_tree_wide(tree_root, out, style=WIDE_STYLE_UNICODE):
+def display_tree_wide(tree_root, out, nt_iter, style=WIDE_STYLE_UNICODE):
   """
   Display an ASCII tree from a tree object.
 
   Less vertical space, more horizontal space, like pstree.
   """
 
-  for (nt, parent_vector) in \
-      traverse_tree_skip_root(tree_root, wide=True):
+  for nt in nt_iter:
     if not nt.is_first_sib:
-      for nt1 in parent_vector:
+      for nt1 in nt.iter_parents():
         if nt1.is_last_sib:
           out.write(style[0])
         else:
@@ -204,22 +216,6 @@ def line_iter_from_file(infile, zero_terminated=False):
     return readline0(infile)
   else:
     return (line.rstrip() for line in infile)
-
-def path_iter_from_line_iter(itr, colorize=False):
-  """
-  Break a line iterator into one of sequences of path components.
-  """
-
-  if not colorize:
-    for path_str in itr:
-      yield split_line(path_str), None
-  else:
-    while True:
-      path_strs = list(itertools.islice(itr, BULK_LS_COUNT))
-      if not path_strs:
-        return
-      for (path_str, color) in postprocess_path(path_strs):
-        yield split_line(path_str), color
 
 '''
 git.git produces 2110 lines of arbo output.
@@ -253,7 +249,7 @@ def split_line(path_str):
     # filter empty path components
     return [el for el in path_str.split('/') if el]
 
-def tree_from_path_iter(itr, skip_dot):
+def tree_from_line_iter(line_iter, skip_dot, colorize):
   """
   Convert a path_iter-style iterator to a tree.
 
@@ -261,9 +257,10 @@ def tree_from_path_iter(itr, skip_dot):
   postprocess takes a path, and prettifies it.
   """
 
-  root = Node('ROOT', 'ROOT')
+  root = Node('ROOT')
   node_path0 = []
-  for (str_path, color) in itr:
+  for line in line_iter:
+    str_path = split_line(line)
     parent = root
     node_path = []
     diverged = False
@@ -272,15 +269,11 @@ def tree_from_path_iter(itr, skip_dot):
       if str_comp is None:
         break
 
-      diverged |= node0 is None or node0.value != str_comp
+      diverged = diverged or node0 is None or node0.value != str_comp
       if not diverged:
         node = node0
       else:
-        if color is not None:
-          pvalue = color + str_comp + END_COLOR
-        else:
-          pvalue = str_comp
-        node = Node(str_comp, pvalue)
+        node = Node(str_comp)
         parent.children.append(node)
 
       node_path.append(node)
@@ -291,7 +284,7 @@ def tree_from_path_iter(itr, skip_dot):
     root = root.children[0]
   return root
 
-def postprocess_path(path_strs):
+def postprocess_path(nt_bulk):
   """
   Take a path, colorize and quote it.
 
@@ -309,8 +302,12 @@ def postprocess_path(path_strs):
 
   This used to be done line by line with directory changes,
   until I bit the bullet and made it edit the ansi escapes in ls output.
-  Escape changes, which LS_COLORS can also contain, aren't handled yet.
+  Custom escape codes for unusual terminals, which LS_COLORS
+  might contain, aren't handled yet.
+  Otherwise the output is exactly what ls gives us.
   """
+
+  path_strs = [nt.path_str for nt in nt_bulk]
 
   # Acceptable quoting styles:
   # - mustn't keep newlines.
@@ -319,20 +316,25 @@ def postprocess_path(path_strs):
   # c-maybe is lacking in jaunty due to an old gnulib
   # somewhere in buildd or source pkg.
   proc = subprocess.Popen(
-      'ls -1d --color=always --quoting-style=escape --'.split() \
+      'ls -U -1d --color=always --quoting-style=escape --'.split() \
       + path_strs, stdout=subprocess.PIPE)
 
+  nt_iter = iter(nt_bulk)
   for line in proc.stdout:
     line = line.decode('utf8')
     if line == END_LS:
       continue
+    nt = next(nt_iter)
+    node = nt.node
 
     #sys.stderr.write('%r\n' % line)
     groups = WITH_COLOR_RE.match(line).groups()
     #sys.stderr.write('%r\n' % (groups,))
     # color might be None
     color, path_str = groups
-    yield path_str, color
+    value = path_str.rsplit('/', 1)[-1]
+    node.color = color
+    node.value = value
 
   if proc.wait():
     raise RuntimeError('Failed to postprocess paths')
@@ -496,11 +498,12 @@ def main():
     os.chdir(chdir)
 
   line_iter = line_iter_from_file(fin, zero_terminated=args.zero_terminated)
-  path_iter = path_iter_from_line_iter(line_iter, colorize=args.colorize)
   # We can't directly convert iterators without building a tree,
-  # because computing parent_vector requires seeking forward.
-  tree = tree_from_path_iter(path_iter, skip_dot=args.skip_dot)
-  display_tree(tree, sys.stdout, wide=args.wide)
+  # because computing is_last_sib along the parent axis
+  # requires seeking forward.
+  tree = tree_from_line_iter(line_iter,
+      skip_dot=args.skip_dot, colorize=args.colorize)
+  display_tree(tree, sys.stdout, wide=args.wide, colorize=args.colorize)
 
   if args.cmd:
     returncode = fin_proc.wait()
@@ -512,7 +515,6 @@ if __name__ == '__main__':
 
 """
 Ideas:
-  pstree-style layout: wider and shorter
   mix two lists, one being a filter for the other.
   eg, git ls-files and the filesystem
   preconfigure:
