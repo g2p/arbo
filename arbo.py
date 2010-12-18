@@ -28,8 +28,12 @@ END_COLOR = '\033[0m'
 END_LS = '\033[m'
 
 # Ways to display a tree
-STYLE_ASCII = ('    ', '|   ', '`-- ', '|-- ', )
+STYLE_ASCII   = ('   ', '|  ', '`- ', '|- ', )
 STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
+
+# For a wide and short display, pstree-style
+WIDE_STYLE_ASCII   = ('   ', '---', '-+-', ' `-', ' | ', ' |-', )
+WIDE_STYLE_UNICODE = ('   ', '───', '─┬─', ' └─', ' │ ', ' ├─', )
 
 # How many paths in one ls call
 BULK_LS_COUNT = 400
@@ -55,71 +59,140 @@ class Node(object):
       return 'Node(%r, %r)' % (self.value, self.pvalue)
     return 'Node(%r, %r, %r)' % (self.value, self.pvalue, self.children)
 
-def traverse_tree(node, last_vector):
-  """
-  Traverse a tree in an order appropriate for graphic display.
+class NodeTraversal(object):
+  def __init__(self, node, is_first_sib, is_last_sib):
+    self.node = node
+    self.is_first_sib = is_first_sib
+    self.is_last_sib = is_last_sib
 
-  Traverse a tree in depth-first order, returning a
-  (value, last_vector, has_single_child)
-  iterator where value is the node value and last_vector a vector
-  of booleans that represent which nodes in the parent chain are
-  the last of their siblings. has_single_child is self-explanatory.
+  @property
+  def has_single_child(self):
+    return len(self.node.children) == 1
 
-  last_vector is important for display, it tells where vertical lines end.
-  """
+  @property
+  def has_children(self):
+    return bool(self.node.children)
 
-  yield (node.pvalue, last_vector, len(node.children) == 1)
-  prev_sibling = None
-  last_vector.append(False)
-  for sibling in node.children:
-    if prev_sibling is not None:
-      for e in traverse_tree(prev_sibling, last_vector):
-        yield e
-    prev_sibling = sibling
-  if prev_sibling is not None:
-    last_vector[-1] = True
-    for e in traverse_tree(prev_sibling, last_vector):
-      yield e
-  last_vector.pop()
-
-def traverse_tree_skip_root(root):
+def traverse_tree_skip_root(root, wide):
   """
   Tree traversal, skipping the root.
 
-  Like traverse_tree, but you don't need to initialize last_vector
+  Like traverse_tree, but you don't need to initialize parent_vector
   and you skip the root.
   """
 
-  for node in root.children:
-    for e in traverse_tree(node, []):
-      yield e
+  root_cursor = NodeTraversal(root, True, True)
+  return traverse_tree(root_cursor, wide, [], True)
 
-def display_tree(tree_root, out, style=STYLE_UNICODE):
+def display_tree(tree_root, out, wide):
+  if wide:
+    display_tree_wide(tree_root, out)
+  else:
+    display_tree_narrow(tree_root, out)
+
+def display_tree_narrow(tree_root, out, style=STYLE_UNICODE):
   """
   Display an ASCII tree from a tree object.
   """
 
   is_single_child = False
-  for (value, last_vector, has_single_child) in \
-      traverse_tree_skip_root(tree_root):
-    if bool(last_vector) and not is_single_child:
-      for is_last in last_vector[:-1]:
-        if is_last:
+  for (nt, parent_vector) in \
+      traverse_tree_skip_root(tree_root, wide=False):
+    if not is_single_child:
+      for nt1 in parent_vector:
+        if nt1.is_last_sib:
           out.write(style[0])
         else:
           out.write(style[1])
-      if last_vector[-1]:
+      if nt.is_last_sib:
         out.write(style[2])
       else:
         out.write(style[3])
     # May need quoting / escaping (already done if --color was used)
-    out.write(value)
-    if not has_single_child:
+    out.write(nt.node.pvalue)
+    if not nt.has_single_child:
       out.write('\n')
     else:
-      if value not in SPECIALS:
+      if nt.node.pvalue not in SPECIALS:
         out.write('/')
-    is_single_child = has_single_child
+    is_single_child = nt.has_single_child
+
+def iter_with_first_last(iterable):
+  """
+  Yield elem, is_first, is_last, from an iterable.
+  """
+
+  el0 = None
+  is_first = True
+  for el in iterable:
+    if el0 is not None:
+      yield NodeTraversal(el0, is_first, False)
+      is_first = False
+    el0 = el
+  if el0 is not None:
+    yield NodeTraversal(el0, is_first, True)
+
+def traverse_tree(nt0, wide,
+    parent_vector, skip_root):
+  """
+  Traverse a tree in an order appropriate for graphic display.
+
+  Traverse a tree in depth-first order. Return a
+  (node_traversal, parent_vector)
+  iterator where node_traversal tracks the node and some of its position
+  in the tree, and parent_vector tracks
+  which nodes in the parent chain are
+  the last of their siblings.
+  If wide, parent_vector tracks the width of the parents.
+
+  parent_vector is important for display, because
+  parent_vector.is_last_sib tells where vertical lines end.
+  """
+
+  if not skip_root:
+    yield (nt0, parent_vector[:-1])
+
+  if not nt0.has_children:
+    return
+
+  parent_vector.append(False)
+
+  for nt in iter_with_first_last(nt0.node.children):
+    parent_vector[-1] = nt
+    for e in traverse_tree(nt, wide, parent_vector, False):
+      yield e
+  parent_vector.pop()
+
+def display_tree_wide(tree_root, out, style=WIDE_STYLE_UNICODE):
+  """
+  Display an ASCII tree from a tree object.
+
+  Less vertical space, more horizontal space, like pstree.
+  """
+
+  for (nt, parent_vector) in \
+      traverse_tree_skip_root(tree_root, wide=True):
+    if not nt.is_first_sib:
+      for nt1 in parent_vector:
+        if nt1.is_last_sib:
+          out.write(style[0])
+        else:
+          out.write(style[4])
+        out.write(' ' * len(nt1.node.value))
+    if nt.is_first_sib:
+      if nt.is_last_sib:
+        out.write(style[1])
+      else:
+        out.write(style[2])
+    else:
+      if nt.is_last_sib:
+        out.write(style[3])
+      else:
+        out.write(style[5])
+    # May need quoting / escaping (already done if --color was used)
+    out.write(nt.node.pvalue)
+    if not nt.has_children:
+      out.write('\n')
 
 def line_iter_from_file(infile, zero_terminated=False):
   """
@@ -283,6 +356,8 @@ def main():
   reader_factory = codecs.getreader(sysencoding)
 
   parser = argparse.ArgumentParser()
+  parser.add_argument('--wide', action='store_true', dest='wide',
+      help='Use more horizontal space and less vertical space')
 
   # XXX http://bugs.python.org/issue9253
   sub = parser.add_subparsers(dest='source', default='stdin')
@@ -423,9 +498,9 @@ def main():
   line_iter = line_iter_from_file(fin, zero_terminated=args.zero_terminated)
   path_iter = path_iter_from_line_iter(line_iter, colorize=args.colorize)
   # We can't directly convert iterators without building a tree,
-  # because computing last_vector requires seeking forward.
+  # because computing parent_vector requires seeking forward.
   tree = tree_from_path_iter(path_iter, skip_dot=args.skip_dot)
-  display_tree(tree, sys.stdout)
+  display_tree(tree, sys.stdout, wide=args.wide)
 
   if args.cmd:
     returncode = fin_proc.wait()
@@ -437,16 +512,12 @@ if __name__ == '__main__':
 
 """
 Ideas:
-  compact tree (a la pstree)
+  pstree-style layout: wider and shorter
   mix two lists, one being a filter for the other.
   eg, git ls-files and the filesystem
   preconfigure:
-    git ls-files
     git ls-files -o --exclude-standard
-    hg locate
-    bzr ls
     ack -f
-    xargs -0a <(find -print0) ls -d --color=force
     # more at http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
 
 """
