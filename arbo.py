@@ -79,8 +79,8 @@ class NodeTraversal(object):
 
   @property
   def path_str(self):
-    # Don't use the ROOT node as a parent.
-    if not self.is_root and not self.parent.is_root:
+    # Don't use the ROOT node in a path.
+    if self.min_depth(2):
       r = self.parent.path_str
       if self.parent not in SPECIALS:
         r += '/'
@@ -89,11 +89,21 @@ class NodeTraversal(object):
     r += self.node.value
     return r
 
-  def iter_parents(self):
+  def min_depth(self, n):
+    if n < 0:
+      raise ValueError(n, 'must be non-negative')
+    if n == 0:
+      return True
+    # root has depth 0
+    if self.is_root:
+      return False
+    return self.parent.min_depth(n - 1)
+
+  def iter_parents(self, min_depth):
     # XXX there's probably a way to avoid this loop entirely
     a = self.parent
     rev_list = []
-    while a is not None and not a.is_root:
+    while a is not None and a.min_depth(min_depth):
       rev_list.insert(0, a)
       a = a.parent
     return rev_list
@@ -133,8 +143,8 @@ def display_tree_narrow(tree_root, out, nt_iter, style=STYLE_UNICODE):
 
   is_single_child = False
   for nt in nt_iter:
-    if not is_single_child:
-      for nt1 in nt.iter_parents():
+    if not is_single_child and nt.min_depth(2):
+      for nt1 in nt.iter_parents(min_depth=2):
         if nt1.is_last_sib:
           out.write(style[0])
         else:
@@ -187,23 +197,26 @@ def display_tree_wide(tree_root, out, nt_iter, style=WIDE_STYLE_UNICODE):
   """
 
   for nt in nt_iter:
-    if not nt.is_first_sib:
-      for nt1 in nt.iter_parents():
-        if nt1.is_last_sib:
-          out.write(style[0])
+    if nt.min_depth(2):
+      if nt.is_first_sib:
+        if nt.is_last_sib:
+          out.write(style[1])
         else:
-          out.write(style[4])
-        out.write(' ' * len(nt1.node.value))
-    if nt.is_first_sib:
-      if nt.is_last_sib:
-        out.write(style[1])
+          out.write(style[2])
       else:
-        out.write(style[2])
-    else:
-      if nt.is_last_sib:
-        out.write(style[3])
-      else:
-        out.write(style[5])
+        first = True
+        for nt1 in nt.iter_parents(min_depth=1):
+          if not first:
+            if nt1.is_last_sib:
+              out.write(style[0])
+            else:
+              out.write(style[4])
+          first = False
+          out.write(' ' * len(nt1.node.value))
+        if nt.is_last_sib:
+          out.write(style[3])
+        else:
+          out.write(style[5])
     # May need quoting / escaping (already done if --color was used)
     out.write(nt.node.pvalue)
     if not nt.has_children:
