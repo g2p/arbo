@@ -109,16 +109,26 @@ class NodeTraversal(object):
     return rev_list
 
 
-def traverse_tree_skip_root(root, wide, colorize):
+def traverse_tree_skip_root(root):
   """
   Tree traversal, skipping the root.
   """
 
   root_cursor = NodeTraversal(root, None, True, True)
-  itr = traverse_tree(root_cursor, wide, True)
-  if colorize:
-    return colorize_nt_iter(itr)
-  return itr
+  for nt in iter_with_first_last(root_cursor):
+    for e in traverse_tree(nt):
+      yield e
+
+def traverse_tree(nt0):
+  """
+  Traverse a tree in depth-first order.
+  """
+
+  yield nt0
+
+  for nt in iter_with_first_last(nt0):
+    for e in traverse_tree(nt):
+      yield e
 
 def colorize_nt_iter(itr):
   while True:
@@ -130,7 +140,9 @@ def colorize_nt_iter(itr):
       yield nt
 
 def display_tree(tree_root, out, wide, colorize):
-  nt_iter = traverse_tree_skip_root(tree_root, wide=wide, colorize=colorize)
+  nt_iter = traverse_tree_skip_root(tree_root)
+  if colorize:
+    nt_iter = colorize_nt_iter(nt_iter)
   if wide:
     display_tree_wide(tree_root, out, nt_iter)
   else:
@@ -176,18 +188,6 @@ def iter_with_first_last(nt):
     el0 = el
   if el0 is not None:
     yield NodeTraversal(el0, nt, is_first, True)
-
-def traverse_tree(nt0, wide, skip_root):
-  """
-  Traverse a tree in depth-first order.
-  """
-
-  if not skip_root:
-    yield nt0
-
-  for nt in iter_with_first_last(nt0):
-    for e in traverse_tree(nt, wide, False):
-      yield e
 
 def display_tree_wide(tree_root, out, nt_iter, style=WIDE_STYLE_UNICODE):
   """
