@@ -158,7 +158,7 @@ def display_tree_narrow(tree_root, out, nt_iter, style=STYLE_UNICODE):
     if not nt.has_single_child:
       out.write('\n')
     else:
-      if nt.node.pvalue not in SPECIALS:
+      if nt.node.value not in SPECIALS:
         out.write('/')
     is_single_child = nt.has_single_child
 
