@@ -28,12 +28,20 @@ END_COLOR = '\033[0m'
 END_LS = '\033[m'
 
 # Ways to display a tree
-STYLE_ASCII   = ('   ', '|  ', '`- ', '|- ', )
-STYLE_UNICODE = ('   ', '│  ', '└─ ', '├─ ', )
+STYLES = {
+  'ascii'   : ('   ', '|  ', '`- ', '|- ', ),
+  'unicode' : ('   ', '│  ', '└─ ', '├─ ', ),
+  'uni-cpct': ('  ', '│ ', '└─', '├─', ),
+}
+DEFAULT_STYLE = STYLES['unicode']
 
 # For a wide and short display, pstree-style
-WIDE_STYLE_ASCII   = ('   ', '---', '-+-', ' `-', ' | ', ' |-', )
-WIDE_STYLE_UNICODE = ('   ', '───', '─┬─', ' └─', ' │ ', ' ├─', )
+WIDE_STYLES = {
+  'ascii'   : ('   ', '---', '-+-', ' `-', ' | ', ' |-', ),
+  'unicode' : ('   ', '───', '─┬─', ' └─', ' │ ', ' ├─', ),
+  'uni-cpct': (' ', '─', '┬', '└', '│', '├', ),
+}
+DEFAULT_WIDE_STYLE = WIDE_STYLES['unicode']
 
 # How many paths in one ls call
 BULK_LS_COUNT = 400
@@ -74,6 +82,9 @@ class NodeTraversal(object):
     return bool(self.node.children)
 
   @property
+  def is_single_child(self):
+    return self.is_first_sib and self.is_last_sib
+  @property
   def is_root(self):
     return self.parent is None
 
@@ -109,12 +120,29 @@ class NodeTraversal(object):
     return rev_list
 
 
+def iter_with_first_last(nt):
+  """
+  Yield a NodeTraversal cursor.
+  """
+
+  el0 = None
+  is_first = True
+  for el in nt.node.children:
+    if el0 is not None:
+      yield NodeTraversal(el0, nt, is_first, False)
+      is_first = False
+    el0 = el
+  if el0 is not None:
+    yield NodeTraversal(el0, nt, is_first, True)
+
+
 def traverse_tree_skip_root(root):
   """
   Tree traversal, skipping the root.
   """
 
   root_cursor = NodeTraversal(root, None, True, True)
+
   for nt in iter_with_first_last(root_cursor):
     for e in traverse_tree(nt):
       yield e
@@ -143,19 +171,21 @@ def display_tree(tree_root, out, wide, colorize):
   nt_iter = traverse_tree_skip_root(tree_root)
   if colorize:
     nt_iter = colorize_nt_iter(nt_iter)
+  else:
+    # XXX We should do quoting / escaping here, if ls wasn't invoked.
+    pass
   if wide:
     display_tree_wide(tree_root, out, nt_iter)
   else:
     display_tree_narrow(tree_root, out, nt_iter)
 
-def display_tree_narrow(tree_root, out, nt_iter, style=STYLE_UNICODE):
+def display_tree_narrow(tree_root, out, nt_iter, style=DEFAULT_STYLE):
   """
   Display an ASCII tree from a tree object.
   """
 
-  is_single_child = False
   for nt in nt_iter:
-    if not is_single_child and nt.min_depth(2):
+    if not nt.is_single_child and nt.min_depth(2):
       for nt1 in nt.iter_parents(min_depth=2):
         if nt1.is_last_sib:
           out.write(style[0])
@@ -172,24 +202,8 @@ def display_tree_narrow(tree_root, out, nt_iter, style=STYLE_UNICODE):
     else:
       if nt.node.value not in SPECIALS:
         out.write('/')
-    is_single_child = nt.has_single_child
 
-def iter_with_first_last(nt):
-  """
-  Yield elem, is_first, is_last, from an iterable.
-  """
-
-  el0 = None
-  is_first = True
-  for el in nt.node.children:
-    if el0 is not None:
-      yield NodeTraversal(el0, nt, is_first, False)
-      is_first = False
-    el0 = el
-  if el0 is not None:
-    yield NodeTraversal(el0, nt, is_first, True)
-
-def display_tree_wide(tree_root, out, nt_iter, style=WIDE_STYLE_UNICODE):
+def display_tree_wide(tree_root, out, nt_iter, style=DEFAULT_WIDE_STYLE):
   """
   Display an ASCII tree from a tree object.
 
@@ -217,7 +231,7 @@ def display_tree_wide(tree_root, out, nt_iter, style=WIDE_STYLE_UNICODE):
           out.write(style[3])
         else:
           out.write(style[5])
-    # May need quoting / escaping (already done if --color was used)
+
     out.write(nt.node.pvalue)
     if not nt.has_children:
       out.write('\n')
@@ -233,27 +247,6 @@ def line_iter_from_file(infile, zero_terminated=False):
   else:
     return (line.rstrip() for line in infile)
 
-'''
-git.git produces 2110 lines of arbo output.
-
-
-Perf with git.git, a warm cache, ls per line:
-real    0m18.375s
-user    0m15.450s
-sys     0m9.000s
-
-Perf with git.git, a warm cache, ls in bulk by 40:
-real    0m1.026s
-user    0m0.690s
-sys     0m0.270s
-
-Bulk by 400:
-real    0m0.558s
-user    0m0.390s
-sys     0m0.070s
-
-'''
-
 def split_line(path_str):
   if path_str[:2] == '//' and path_str[:3] != '///':
     # // special semantics (cf POSIX, last paragraph:)
@@ -265,7 +258,7 @@ def split_line(path_str):
     # filter empty path components
     return [el for el in path_str.split('/') if el]
 
-def tree_from_line_iter(line_iter, skip_dot, colorize):
+def tree_from_line_iter(line_iter, skip_dot):
   """
   Convert a path_iter-style iterator to a tree.
 
@@ -326,13 +319,13 @@ def postprocess_path(nt_bulk):
   path_strs = [nt.path_str for nt in nt_bulk]
 
   # Acceptable quoting styles:
-  # - mustn't keep newlines.
-  # - mustn't keep \e (used in ansi color escapes).
+  # - must filter newlines.
+  # - must filter \e (used in ansi color escapes).
   # c-maybe (preferred), c, escape.
-  # c-maybe is lacking in jaunty due to an old gnulib
-  # somewhere in buildd or source pkg.
+  # c-maybe is missing in jaunty due to an old gnulib
+  # somewhere on a buildd or in a source package.
   proc = subprocess.Popen(
-      'ls -U -1d --color=always --quoting-style=escape --'.split() \
+      'ls -1dU --color=always --quoting-style=escape --'.split() \
       + path_strs, stdout=subprocess.PIPE)
 
   nt_iter = iter(nt_bulk)
@@ -516,8 +509,7 @@ def main():
   # We can't directly convert iterators without building a tree,
   # because computing is_last_sib along the parent axis
   # requires seeking forward.
-  tree = tree_from_line_iter(line_iter,
-      skip_dot=args.skip_dot, colorize=args.colorize)
+  tree = tree_from_line_iter(line_iter, skip_dot=args.skip_dot)
   display_tree(tree, sys.stdout, wide=args.wide, colorize=args.colorize)
 
   if args.cmd:
@@ -536,6 +528,24 @@ Ideas:
     git ls-files -o --exclude-standard
     ack -f
     # more at http://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=blob;f=build-aux/vc-list-files;hb=HEAD
+
+Perf:
+git.git produces ~2110 lines of arbo output.
+
+Perf with git.git, a warm cache, ls per line:
+real    0m18.375s
+user    0m15.450s
+sys     0m9.000s
+
+Perf with git.git, a warm cache, ls in bulk by 40:
+real    0m1.026s
+user    0m0.690s
+sys     0m0.270s
+
+Bulk by 400:
+real    0m0.558s
+user    0m0.390s
+sys     0m0.070s
 
 """
 
