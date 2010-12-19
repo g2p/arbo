@@ -66,6 +66,14 @@ class Node(object):
       return self.color + self.value + END_COLOR
     return self.value
 
+  def traverse_skip_root(self):
+    root_cursor = NodeTraversal(self, None, True, True)
+    itr = root_cursor.traverse_depth_first()
+    # Skip the root
+    next(itr)
+    return itr
+
+
 class NodeTraversal(object):
   def __init__(self, node, parent, is_first_sib, is_last_sib):
     self.node = node
@@ -119,44 +127,24 @@ class NodeTraversal(object):
       a = a.parent
     return rev_list
 
-
-def iter_with_first_last(nt):
-  """
-  Yield a NodeTraversal cursor.
-  """
-
-  el0 = None
-  is_first = True
-  for el in nt.node.children:
+  def iter_with_first_last(self):
+    el0 = None
+    is_first = True
+    for el in self.node.children:
+      if el0 is not None:
+        yield NodeTraversal(el0, self, is_first, False)
+        is_first = False
+      el0 = el
     if el0 is not None:
-      yield NodeTraversal(el0, nt, is_first, False)
-      is_first = False
-    el0 = el
-  if el0 is not None:
-    yield NodeTraversal(el0, nt, is_first, True)
+      yield NodeTraversal(el0, self, is_first, True)
 
+  def traverse_depth_first(self):
+    yield self
 
-def traverse_tree_skip_root(root):
-  """
-  Tree traversal, skipping the root.
-  """
+    for nt in self.iter_with_first_last():
+      for e in nt.traverse_depth_first():
+        yield e
 
-  root_cursor = NodeTraversal(root, None, True, True)
-
-  for nt in iter_with_first_last(root_cursor):
-    for e in traverse_tree(nt):
-      yield e
-
-def traverse_tree(nt0):
-  """
-  Traverse a tree in depth-first order.
-  """
-
-  yield nt0
-
-  for nt in iter_with_first_last(nt0):
-    for e in traverse_tree(nt):
-      yield e
 
 def colorize_nt_iter(itr):
   while True:
@@ -168,7 +156,7 @@ def colorize_nt_iter(itr):
       yield nt
 
 def display_tree(tree_root, out, wide, colorize):
-  nt_iter = traverse_tree_skip_root(tree_root)
+  nt_iter = tree_root.traverse_skip_root()
   if colorize:
     nt_iter = colorize_nt_iter(nt_iter)
   else:
@@ -332,11 +320,12 @@ def postprocess_path(nt_bulk):
   for line in proc.stdout:
     line = line.decode('utf8')
     if line == END_LS:
+      #sys.stderr.write('END_LS\n')
       continue
     nt = next(nt_iter)
     node = nt.node
 
-    #sys.stderr.write('%r\n' % line)
+    #sys.stderr.write('%r %r\n' % (line, node.value))
     groups = WITH_COLOR_RE.match(line).groups()
     #sys.stderr.write('%r\n' % (groups,))
     # color might be None
