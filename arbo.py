@@ -23,7 +23,7 @@ SPECIALS = (SLASH, SLASHSLASH)
 # Output is escaped so the only escapes and newlines are the ones ls adds.
 START_COLOR = '\033'
 WITH_COLOR_RE = re.compile(
-  r'^(?:\033\[0m)?(\033\[[0-9]+;[0-9]+m)?[^\n\033]*?([^/\n\033]*/*)(?:\033\[(?:0m|K))*\n(?:\033\[m)?$')
+  r'^(?:\033\[0m)?(\033\[(?:[0-9]+;){1,2}[0-9]+m)?[^\n\033]*?([^/\n\033]*/*)(?:\033\[(?:0m|K))*\n(?:\033\[m)?$')
 END_COLOR = '\033[0m'
 END_LS = '\033[m'
 
